@@ -88,30 +88,12 @@ api.interceptors.request.use((config: any) => {
 
 // ─── Jobs ─────────────────────────────────────────────────────────────────────
 
-/**
- * Fetches jobs with optional query filters.
- *
- * @param params Optional query filter object.
- * @param params.category Optional job category filter.
- * @param params.status Optional job status filter.
- * @param params.limit Optional maximum number of jobs to return.
- * @param params.search Optional text search term matched by backend search.
- * @returns A list of jobs matching the provided filter criteria.
- * @throws {import("axios").AxiosError} If the jobs request fails or times out.
- * @example
- * ```ts
- * const jobs = await fetchJobs({
- *   category: "development",
- *   status: "open",
- *   limit: 10,
- *   search: "stellar",
- * });
- * ```
- * @see backend/src/routes/jobs.js
- */
-export async function fetchJobs(params?: { category?: string; status?: string; limit?: number; search?: string }) {
-  const { data } = await api.get<{ success: boolean; data: Job[] }>("/api/jobs", { params });
-  return data.data;
+export async function fetchJobs(params?: { category?: string; status?: string; limit?: number; search?: string; cursor?: string }) {
+  const { data } = await api.get<{ success: boolean; data: Job[]; nextCursor: string | null }>("/api/jobs", { params });
+  return {
+    jobs: data.data,
+    nextCursor: data.nextCursor ?? null,
+  };
 }
 
 /**

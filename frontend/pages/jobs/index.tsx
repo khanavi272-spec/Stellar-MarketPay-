@@ -15,27 +15,65 @@ export default function JobsPage() {
   const router = useRouter();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const category = (router.query.category as string) || "";
   const status = (router.query.status as string) || "open";
-  const minBudget = (router.query.minBudget as string) || "";
-  const maxBudget = (router.query.maxBudget as string) || "";
+  const pageFromQuery = Math.max(1, Number(router.query.page) || 1);
 
   useEffect(() => {
-    setLoading(true);
-    fetchJobs({
-      category: category || undefined,
-      status: status || undefined,
-      limit: 50,
-      minBudget: minBudget ? parseFloat(minBudget) : undefined,
-      maxBudget: maxBudget ? parseFloat(maxBudget) : undefined,
-    })
-      .then(setJobs)
-      .catch(() => setError("Could not load jobs."))
-      .finally(() => setLoading(false));
-  }, [category, status, minBudget, maxBudget]);
+    if (!router.isReady) return;
+
+    let isCancelled = false;
+
+    async function loadJobs() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        let cursor: string | undefined;
+        let loadedNextCursor: string | null = null;
+        let pagesLoaded = 0;
+        let allJobs: Job[] = [];
+
+        for (let page = 1; page <= pageFromQuery; page += 1) {
+          const result = await fetchJobs({
+            category: category || undefined,
+            status: status || undefined,
+            limit: 20,
+            cursor,
+          });
+
+          const seenIds = new Set(allJobs.map((job) => job.id));
+          const uniqueNewJobs = result.jobs.filter((job) => !seenIds.has(job.id));
+          allJobs = allJobs.concat(uniqueNewJobs);
+          loadedNextCursor = result.nextCursor;
+          pagesLoaded = page;
+
+          if (!result.nextCursor) break;
+          cursor = result.nextCursor;
+        }
+
+        if (!isCancelled) {
+          setJobs(allJobs);
+          setNextCursor(loadedNextCursor);
+          setCurrentPage(pagesLoaded);
+        }
+      } catch (_) {
+        if (!isCancelled) setError("Could not load jobs.");
+      } finally {
+        if (!isCancelled) setLoading(false);
+      }
+    }
+
+    loadJobs();
+
+    return () => { isCancelled = true; };
+  }, [category, status, pageFromQuery, router.isReady]);
 
   const filtered = search.trim()
     ? jobs.filter((j) =>
@@ -46,7 +84,46 @@ export default function JobsPage() {
     : jobs;
 
   const setFilter = (key: string, val: string) => {
-    router.push({ pathname: "/jobs", query: { ...router.query, [key]: val || undefined } }, undefined, { shallow: true });
+    router.push(
+      { pathname: "/jobs", query: { ...router.query, [key]: val || undefined, page: undefined } },
+      undefined,
+      { shallow: true }
+    );
+  };
+
+  const handleLoadMore = async () => {
+    if (!nextCursor || loadingMore) return;
+
+    setLoadingMore(true);
+    setError(null);
+
+    try {
+      const result = await fetchJobs({
+        category: category || undefined,
+        status: status || undefined,
+        limit: 20,
+        cursor: nextCursor,
+      });
+
+      setJobs((prev) => {
+        const seenIds = new Set(prev.map((job) => job.id));
+        const uniqueNewJobs = result.jobs.filter((job) => !seenIds.has(job.id));
+        return prev.concat(uniqueNewJobs);
+      });
+      setNextCursor(result.nextCursor);
+
+      const nextPage = currentPage + 1;
+      setCurrentPage(nextPage);
+      router.push(
+        { pathname: "/jobs", query: { ...router.query, page: String(nextPage) } },
+        undefined,
+        { shallow: true }
+      );
+    } catch (_) {
+      setError("Could not load more jobs.");
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   const setBudgetRange = (min: string, max: string) => {
@@ -186,9 +263,25 @@ export default function JobsPage() {
               <Link href="/post-job" className="btn-primary text-sm">Post the first job →</Link>
             </div>
           ) : (
-            <div className="grid sm:grid-cols-2 gap-4">
-              {filtered.map((job) => <JobCard key={job.id} job={job} />)}
-            </div>
+            <>
+              <div className="grid sm:grid-cols-2 gap-4">
+                {filtered.map((job) => <JobCard key={job.id} job={job} />)}
+              </div>
+
+              {nextCursor && (
+                <div className="mt-8 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    className="btn-secondary text-sm min-w-40 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                  >
+                    {loadingMore && <SpinnerIcon className="w-4 h-4 animate-spin" />}
+                    {loadingMore ? "Loading..." : "Load more jobs"}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -200,6 +293,14 @@ function SearchIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+    </svg>
+  );
+}
+
+function SpinnerIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3a9 9 0 109 9" />
     </svg>
   );
 }

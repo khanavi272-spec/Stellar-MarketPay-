@@ -106,7 +106,26 @@ async function getJob(id) {
   return rowToJob(rows[0]);
 }
 
-async function listJobs({ category, status = "open", limit = 50, search, minBudget, maxBudget } = {}) {
+function encodeCursor(jobRow) {
+  return Buffer.from(JSON.stringify({
+    createdAt: jobRow.created_at,
+    id: jobRow.id,
+  })).toString("base64");
+}
+
+function decodeCursor(cursor) {
+  try {
+    const decoded = JSON.parse(Buffer.from(cursor, "base64").toString("utf8"));
+    if (!decoded.createdAt || !decoded.id) throw new Error("Invalid cursor");
+    return decoded;
+  } catch (_) {
+    const e = new Error("Invalid cursor");
+    e.status = 400;
+    throw e;
+  }
+}
+
+async function listJobs({ category, status = "open", limit = 50, search, cursor } = {}) {
   const conditions = [];
   const params     = [];
 
@@ -130,26 +149,31 @@ async function listJobs({ category, status = "open", limit = 50, search, minBudg
     );
   }
 
-  if (minBudget !== undefined && !isNaN(minBudget)) {
-    params.push(minBudget);
-    conditions.push(`budget >= $${params.length}`);
-  }
-
-  if (maxBudget !== undefined && !isNaN(maxBudget)) {
-    params.push(maxBudget);
-    conditions.push(`budget <= $${params.length}`);
+  if (cursor) {
+    const decoded = decodeCursor(cursor);
+    params.push(decoded.createdAt, decoded.id);
+    const createdAtIdx = params.length - 1;
+    const idIdx = params.length;
+    conditions.push(`(created_at < $${createdAtIdx} OR (created_at = $${createdAtIdx} AND id < $${idIdx}))`);
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-  const safeLimit = Math.min(Number(limit) || 50, 100);
-  params.push(safeLimit);
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 100));
+  params.push(safeLimit + 1);
 
   const { rows } = await query(
-    `SELECT * FROM jobs ${where} ORDER BY created_at DESC LIMIT $${params.length}`,
+    `SELECT * FROM jobs ${where} ORDER BY created_at DESC, id DESC LIMIT $${params.length}`,
     params
   );
 
-  return rows.map(rowToJob);
+  const hasMore = rows.length > safeLimit;
+  const currentRows = hasMore ? rows.slice(0, safeLimit) : rows;
+  const nextCursor = hasMore ? encodeCursor(currentRows[currentRows.length - 1]) : null;
+
+  return {
+    jobs: currentRows.map(rowToJob),
+    nextCursor,
+  };
 }
 
 async function listJobsByClient(clientAddress) {

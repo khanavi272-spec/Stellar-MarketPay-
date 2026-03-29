@@ -3,13 +3,25 @@
  * Stellar blockchain helpers for MarketPay.
  */
 
-import { Horizon, Networks, Asset, Operation, TransactionBuilder, Transaction } from "@stellar/stellar-sdk";
+import {
+  Horizon, Networks, Asset, Operation, TransactionBuilder, Transaction,
+  Contract, nativeToScVal, Address, xdr,
+} from "@stellar/stellar-sdk";
+import { SorobanRpc } from "@stellar/stellar-sdk";
 
 const NETWORK = (process.env.NEXT_PUBLIC_STELLAR_NETWORK || "testnet") as "testnet" | "mainnet";
 const HORIZON_URL = process.env.NEXT_PUBLIC_HORIZON_URL || "https://horizon-testnet.stellar.org";
+const SOROBAN_RPC_URL = process.env.NEXT_PUBLIC_SOROBAN_RPC_URL || "https://soroban-testnet.stellar.org";
 
 export const NETWORK_PASSPHRASE = NETWORK === "mainnet" ? Networks.PUBLIC : Networks.TESTNET;
 export const server = new Horizon.Server(HORIZON_URL);
+export const sorobanServer = new SorobanRpc.Server(SOROBAN_RPC_URL);
+
+// XLM SAC (Stellar Asset Contract) address on testnet
+export const XLM_SAC_ADDRESS =
+  NETWORK === "mainnet"
+    ? "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA"
+    : "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
 
 // USDC asset issued by Circle
 export const USDC_ISSUER =
@@ -117,6 +129,91 @@ export function isValidStellarAddress(address: string): boolean {
 export function explorerUrl(hash: string): string {
   const net = NETWORK === "mainnet" ? "public" : "testnet";
   return `https://stellar.expert/explorer/${net}/tx/${hash}`;
+}
+
+// ─── Soroban / Escrow ─────────────────────────────────────────────────────────
+
+/**
+ * Build an unsigned Soroban transaction that calls create_escrow() on the
+ * MarketPay contract.  The caller must sign it with Freighter and submit via
+ * submitSorobanTransaction().
+ *
+ * @param clientPublicKey  Stellar address of the client (signer + payer)
+ * @param jobId            Backend job UUID
+ * @param freelancerAddress Stellar address of the freelancer (placeholder — use a dummy if not yet known)
+ * @param budgetXLM        Budget in XLM (e.g. "100.0000000")
+ */
+export async function buildCreateEscrowTransaction({
+  clientPublicKey,
+  jobId,
+  freelancerAddress,
+  budgetXLM,
+}: {
+  clientPublicKey: string;
+  jobId: string;
+  freelancerAddress: string;
+  budgetXLM: string;
+}) {
+  const contractId = process.env.NEXT_PUBLIC_CONTRACT_ID;
+  if (!contractId) throw new Error("NEXT_PUBLIC_CONTRACT_ID is not set");
+
+  // Convert XLM to stroops (1 XLM = 10_000_000 stroops)
+  const amountStroops = BigInt(Math.round(parseFloat(budgetXLM) * 10_000_000));
+
+  const contract = new Contract(contractId);
+  const sourceAccount = await sorobanServer.getAccount(clientPublicKey);
+
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: "1000000", // generous fee for Soroban ops
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(
+      contract.call(
+        "create_escrow",
+        nativeToScVal(jobId, { type: "string" }),
+        new Address(clientPublicKey).toScVal(),
+        new Address(freelancerAddress).toScVal(),
+        new Address(XLM_SAC_ADDRESS).toScVal(),
+        nativeToScVal(amountStroops, { type: "i128" }),
+      )
+    )
+    .setTimeout(60)
+    .build();
+
+  // Simulate to get the correct resource footprint
+  const simResult = await sorobanServer.simulateTransaction(tx);
+  if (SorobanRpc.Api.isSimulationError(simResult)) {
+    throw new Error(`Soroban simulation failed: ${simResult.error}`);
+  }
+
+  return SorobanRpc.assembleTransaction(tx, simResult).build();
+}
+
+/**
+ * Submit a signed Soroban transaction and poll until it's confirmed.
+ */
+export async function submitSorobanTransaction(signedXDR: string): Promise<string> {
+  const sendResult = await sorobanServer.sendTransaction(
+    new Transaction(signedXDR, NETWORK_PASSPHRASE)
+  );
+
+  if (sendResult.status === "ERROR") {
+    throw new Error(`Soroban submission failed: ${JSON.stringify(sendResult.errorResult)}`);
+  }
+
+  const hash = sendResult.hash;
+
+  // Poll for confirmation (up to 30s)
+  for (let i = 0; i < 30; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    const status = await sorobanServer.getTransaction(hash);
+    if (status.status === SorobanRpc.Api.GetTransactionStatus.SUCCESS) return hash;
+    if (status.status === SorobanRpc.Api.GetTransactionStatus.FAILED) {
+      throw new Error(`Soroban transaction failed: ${hash}`);
+    }
+  }
+
+  throw new Error(`Soroban transaction timed out: ${hash}`);
 }
 
 export function accountUrl(address: string): string {

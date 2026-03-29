@@ -298,6 +298,18 @@ export async function releaseEscrow(jobId: string, clientAddress: string) {
   return data.data;
 }
 
+/**
+ * Stores the on-chain escrow contract ID against a job record.
+ *
+ * @param jobId Job identifier.
+ * @param escrowContractId Soroban transaction hash returned after create_escrow().
+ * @returns The updated job record.
+ */
+export async function updateJobEscrowId(jobId: string, escrowContractId: string) {
+  const { data } = await api.patch<{ success: boolean; data: Job }>(`/api/jobs/${jobId}/escrow`, { escrowContractId });
+  return data.data;
+}
+
 // ─── Ratings ──────────────────────────────────────────────────────────────────
 
 /**

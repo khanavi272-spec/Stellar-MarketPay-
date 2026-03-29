@@ -11,7 +11,7 @@ const generalJobRateLimiter = createRateLimiter(30, 1); // 100 requests per minu
 
 
 const jobService = require("../services/jobService");
-const { createJob, getJob, listJobs, listJobsByClient } = jobService.default || jobService;
+const { createJob, getJob, listJobs, listJobsByClient, updateJobEscrowId } = jobService.default || jobService;
 const { verifyJWT } = require("../middleware/auth");
 
 // GET /api/jobs — list jobs (with optional ?category=&status=&limit=&search=)
@@ -41,6 +41,15 @@ router.post("/", jobCreationRateLimiter ,(req, res, next) => {
   try {
     const job = createJob(req.body);
     res.status(201).json({ success: true, data: job });
+  } catch (e) { next(e); }
+});
+
+// PATCH /api/jobs/:id/escrow — store escrow contract ID after on-chain lock
+router.patch("/:id/escrow", verifyJWT, generalJobRateLimiter, async (req, res, next) => {
+  try {
+    const { escrowContractId } = req.body;
+    const job = await updateJobEscrowId(req.params.id, escrowContractId);
+    res.json({ success: true, data: job });
   } catch (e) { next(e); }
 });
 

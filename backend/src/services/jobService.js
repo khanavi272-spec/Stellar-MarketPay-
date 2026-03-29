@@ -220,6 +220,23 @@ async function assignFreelancer(jobId, freelancerAddress) {
   return rowToJob(rows[0]);
 }
 
+async function updateJobEscrowId(jobId, escrowContractId) {
+  if (!escrowContractId || typeof escrowContractId !== "string") {
+    const e = new Error("Invalid escrow contract ID"); e.status = 400; throw e;
+  }
+
+  const { rows } = await query(
+    "UPDATE jobs SET escrow_contract_id = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+    [escrowContractId, jobId]
+  );
+
+  if (!rows.length) {
+    const e = new Error("Job not found"); e.status = 404; throw e;
+  }
+
+  return rowToJob(rows[0]);
+}
+
 export default {
   createJob,
   getJob,
@@ -227,4 +244,5 @@ export default {
   listJobsByClient,
   updateJobStatus,
   assignFreelancer,
+  updateJobEscrowId,
 };

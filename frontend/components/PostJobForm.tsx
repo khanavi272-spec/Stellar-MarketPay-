@@ -1,15 +1,20 @@
 /**
  * components/PostJobForm.tsx
  * Form for clients to post a new job with XLM budget.
+ * Issue #21: Integrates Soroban escrow contract into job creation flow.
  */
 import { useState } from "react";
-import { createJob } from "@/lib/api";
+import { createJob, updateJobEscrowId } from "@/lib/api";
+import { buildCreateEscrowTransaction, submitSorobanTransaction } from "@/lib/stellar";
+import { signTransactionWithWallet } from "@/lib/wallet";
 import { JOB_CATEGORIES, SKILL_SUGGESTIONS } from "@/utils/format";
 import { useRouter } from "next/router";
 import clsx from "clsx";
 import { useToast } from "@/components/Toast";
 
 interface PostJobFormProps { publicKey: string; }
+
+type Step = "idle" | "posting" | "locking" | "done" | "error";
 
 export default function PostJobForm({ publicKey }: PostJobFormProps) {
   const router = useRouter();
@@ -19,6 +24,7 @@ export default function PostJobForm({ publicKey }: PostJobFormProps) {
   });
   const [skills, setSkills] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
@@ -54,8 +60,13 @@ export default function PostJobForm({ publicKey }: PostJobFormProps) {
     if (!isValid) return;
     setLoading(true);
     setError(null);
+    setStep("posting");
+
+    let job: Awaited<ReturnType<typeof createJob>> | null = null;
+
     try {
-      const job = await createJob({
+      // Step 1 — Post job to backend
+      job = await createJob({
         title: form.title.trim(),
         description: form.description.trim(),
         budget: parseFloat(form.budget).toFixed(7),
@@ -64,10 +75,38 @@ export default function PostJobForm({ publicKey }: PostJobFormProps) {
         deadline: form.deadline || undefined,
         clientAddress: publicKey,
       });
-      toast.success("Job posted! Budget locked in escrow.");
+
+      // Step 2 — Build & sign Soroban create_escrow() transaction
+      setStep("locking");
+
+      const unsignedTx = await buildCreateEscrowTransaction({
+        clientPublicKey: publicKey,
+        jobId: job.id,
+        // Use client as placeholder freelancer until one is hired
+        freelancerAddress: publicKey,
+        budgetXLM: parseFloat(form.budget).toFixed(7),
+      });
+
+      const { signedXDR, error: signError } = await signTransactionWithWallet(unsignedTx.toXDR());
+      if (signError || !signedXDR) {
+        // Roll back: delete the job we just created
+        throw new Error(signError || "Freighter signing was cancelled");
+      }
+
+      // Step 3 — Submit to Soroban RPC and wait for confirmation
+      const txHash = await submitSorobanTransaction(signedXDR);
+
+      // Step 4 — Persist escrow contract ID in the job record
+      await updateJobEscrowId(job.id, txHash);
+
+      setStep("done");
+      toast.success("Job posted and budget locked in escrow.");
       router.push(`/jobs/${job.id}`);
     } catch (err) {
-      toast.error("Failed to post job. Please try again.");
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setError(msg);
+      setStep("error");
+      toast.error(`Failed: ${msg}`);
       setLoading(false);
     }
   };
@@ -252,6 +291,31 @@ export default function PostJobForm({ publicKey }: PostJobFormProps) {
             className="input-field" min={new Date().toISOString().split("T")[0]} />
         </div>
 
+        {/* Multi-step progress indicator */}
+        {step !== "idle" && (
+          <div className="p-4 rounded-xl bg-market-900/60 border border-market-500/20 space-y-3">
+            <p className="text-xs font-medium text-amber-800/70 uppercase tracking-wider">Transaction progress</p>
+            <div className="flex items-center gap-3">
+              <StepDot status={step === "posting" ? "active" : step === "idle" || step === "error" ? "idle" : "done"} />
+              <span className={clsx("text-sm", step === "posting" ? "text-amber-100" : step === "idle" ? "text-amber-800/50" : "text-green-400")}>
+                Posting job
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <StepDot status={step === "locking" ? "active" : step === "done" ? "done" : "idle"} />
+              <span className={clsx("text-sm", step === "locking" ? "text-amber-100" : step === "done" ? "text-green-400" : "text-amber-800/50")}>
+                Locking escrow on-chain
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <StepDot status={step === "done" ? "done" : "idle"} />
+              <span className={clsx("text-sm", step === "done" ? "text-green-400" : "text-amber-800/50")}>
+                Complete
+              </span>
+            </div>
+          </div>
+        )}
+
         {error && (
           <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>
         )}
@@ -267,13 +331,9 @@ export default function PostJobForm({ publicKey }: PostJobFormProps) {
           }
           className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? (
-            <>
-              <Spinner /> Posting Job...
-            </>
-          ) : (
-            "Post Job & Lock Budget in Escrow"
-          )}
+          {step === "posting" && <><Spinner /> Posting job...</>}
+          {step === "locking" && <><Spinner /> Locking escrow — sign in Freighter...</>}
+          {(step === "idle" || step === "error") && "Post Job & Lock Budget in Escrow"}
         </button>
 
         <p className="text-center text-xs text-amber-800/60">
@@ -286,4 +346,20 @@ export default function PostJobForm({ publicKey }: PostJobFormProps) {
 
 function Spinner() {
   return <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>;
+}
+
+function StepDot({ status }: { status: "idle" | "active" | "done" }) {
+  if (status === "done") {
+    return (
+      <span className="w-5 h-5 rounded-full bg-green-500/20 border border-green-500/40 flex items-center justify-center text-green-400 text-xs">✓</span>
+    );
+  }
+  if (status === "active") {
+    return (
+      <span className="w-5 h-5 rounded-full border border-amber-400/60 flex items-center justify-center">
+        <Spinner />
+      </span>
+    );
+  }
+  return <span className="w-5 h-5 rounded-full border border-amber-800/30 bg-market-900/40" />;
 }

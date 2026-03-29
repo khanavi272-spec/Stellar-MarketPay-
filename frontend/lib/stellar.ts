@@ -5,7 +5,7 @@
 
 import {
   Horizon, Networks, Asset, Operation, TransactionBuilder, Transaction,
-  Contract, nativeToScVal, Address, xdr,
+  Contract, nativeToScVal, Address,
 } from "@stellar/stellar-sdk";
 import { SorobanRpc } from "@stellar/stellar-sdk";
 

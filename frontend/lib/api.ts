@@ -310,6 +310,15 @@ export async function updateJobEscrowId(jobId: string, escrowContractId: string)
   return data.data;
 }
 
+/**
+ * Deletes a job by ID. Used to roll back an orphaned job when escrow fails.
+ *
+ * @param jobId Job identifier to delete.
+ */
+export async function deleteJob(jobId: string) {
+  await api.delete(`/api/jobs/${jobId}`);
+}
+
 // ─── Ratings ──────────────────────────────────────────────────────────────────
 
 /**

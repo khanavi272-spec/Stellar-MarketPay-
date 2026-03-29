@@ -237,6 +237,13 @@ async function updateJobEscrowId(jobId, escrowContractId) {
   return rowToJob(rows[0]);
 }
 
+async function deleteJob(jobId) {
+  const { rowCount } = await query("DELETE FROM jobs WHERE id = $1", [jobId]);
+  if (!rowCount) {
+    const e = new Error("Job not found"); e.status = 404; throw e;
+  }
+}
+
 export default {
   createJob,
   getJob,
@@ -245,4 +252,5 @@ export default {
   updateJobStatus,
   assignFreelancer,
   updateJobEscrowId,
+  deleteJob,
 };

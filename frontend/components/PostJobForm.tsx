@@ -4,7 +4,7 @@
  * Issue #21: Integrates Soroban escrow contract into job creation flow.
  */
 import { useState } from "react";
-import { createJob, updateJobEscrowId } from "@/lib/api";
+import { createJob, updateJobEscrowId, deleteJob } from "@/lib/api";
 import { buildCreateEscrowTransaction, submitSorobanTransaction } from "@/lib/stellar";
 import { signTransactionWithWallet } from "@/lib/wallet";
 import { JOB_CATEGORIES, SKILL_SUGGESTIONS } from "@/utils/format";
@@ -89,12 +89,17 @@ export default function PostJobForm({ publicKey }: PostJobFormProps) {
 
       const { signedXDR, error: signError } = await signTransactionWithWallet(unsignedTx.toXDR());
       if (signError || !signedXDR) {
-        // Roll back: delete the job we just created
+        // Roll back: remove the orphaned job from the backend
+        await deleteJob(job.id).catch(() => {}); // best-effort
         throw new Error(signError || "Freighter signing was cancelled");
       }
 
       // Step 3 — Submit to Soroban RPC and wait for confirmation
-      const txHash = await submitSorobanTransaction(signedXDR);
+      const txHash = await submitSorobanTransaction(signedXDR).catch(async (e) => {
+        // Roll back: remove the orphaned job from the backend
+        await deleteJob(job!.id).catch(() => {});
+        throw e;
+      });
 
       // Step 4 — Persist escrow contract ID in the job record
       await updateJobEscrowId(job.id, txHash);

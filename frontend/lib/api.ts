@@ -262,6 +262,22 @@ export async function fetchProfile(publicKey: string) {
 }
 
 /**
+ * Fetches a public profile for display on shared profile pages.
+ * Returns `null` when the backend responds with 404 (no profile yet).
+ */
+export async function fetchPublicProfile(publicKey: string): Promise<UserProfile | null> {
+  try {
+    const { data } = await api.get<{ success: boolean; data: UserProfile }>(
+      `/api/profiles/${encodeURIComponent(publicKey)}`
+    );
+    return data.data;
+  } catch (e) {
+    if (axios.isAxiosError(e) && e.response?.status === 404) return null;
+    throw e;
+  }
+}
+
+/**
  * Creates or updates a user profile.
  *
  * Request payload shape:

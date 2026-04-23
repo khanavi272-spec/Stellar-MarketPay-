@@ -25,6 +25,7 @@ function rowToApp(row) {
     freelancerAddress: row.freelancer_address,
     proposal:          row.proposal,
     bidAmount:         row.bid_amount,
+    currency:          row.currency || 'XLM',
     status:            row.status,
     screeningAnswers:  row.screening_answers || {},
     createdAt:         row.created_at,

@@ -6,6 +6,13 @@
 export type JobStatus = "open" | "in_progress" | "completed" | "cancelled";
 export type UserRole  = "client" | "freelancer" | "both";
 export type Currency  = "XLM" | "USDC";
+export type PortfolioItemType = "github" | "live" | "stellar_tx";
+
+export interface PortfolioItem {
+  title: string;
+  url: string;
+  type: PortfolioItemType;
+}
 
 export interface Job {
   id: string;
@@ -44,6 +51,7 @@ export interface UserProfile {
   displayName?: string;
   bio?: string;
   skills?: string[];
+  portfolioItems?: PortfolioItem[];
   role: UserRole;
   completedJobs: number;
   totalEarnedXLM: string;

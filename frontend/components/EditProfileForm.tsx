@@ -4,11 +4,22 @@
  */
 import { useState, useEffect } from "react";
 import { fetchProfile, upsertProfile } from "@/lib/api";
-import type { UserProfile, UserRole } from "@/utils/types";
+import type { PortfolioItem, PortfolioItemType, UserProfile, UserRole } from "@/utils/types";
 import clsx from "clsx";
 
 interface Props {
   publicKey: string;
+}
+
+const MAX_PORTFOLIO_ITEMS = 10;
+const portfolioTypeOptions: { value: PortfolioItemType; label: string; placeholder: string }[] = [
+  { value: "github", label: "GitHub Repo", placeholder: "https://github.com/username/project" },
+  { value: "live", label: "Live URL", placeholder: "https://example.com" },
+  { value: "stellar_tx", label: "Stellar Transaction", placeholder: "Transaction ID" },
+];
+
+function createEmptyPortfolioItem(): PortfolioItem {
+  return { title: "", url: "", type: "github" };
 }
 
 export default function EditProfileForm({ publicKey }: Props) {
@@ -23,6 +34,7 @@ export default function EditProfileForm({ publicKey }: Props) {
   const [role, setRole] = useState<UserRole>("freelancer");
   const [skills, setSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState("");
+  const [portfolioItems, setPortfolioItems] = useState<PortfolioItem[]>([]);
 
   useEffect(() => {
     fetchProfile(publicKey)
@@ -33,6 +45,7 @@ export default function EditProfileForm({ publicKey }: Props) {
           setBio(data.bio || "");
           setRole(data.role || "freelancer");
           setSkills(data.skills || []);
+          setPortfolioItems(data.portfolioItems || []);
         }
       })
       .catch((err) => {
@@ -56,6 +69,31 @@ export default function EditProfileForm({ publicKey }: Props) {
     setSkills(skills.filter((s) => s !== skillToRemove));
   };
 
+  const addPortfolioItem = () => {
+    if (portfolioItems.length >= MAX_PORTFOLIO_ITEMS) {
+      setErrorMsg(`You can add up to ${MAX_PORTFOLIO_ITEMS} portfolio items.`);
+      return;
+    }
+    setErrorMsg("");
+    setPortfolioItems((current) => [...current, createEmptyPortfolioItem()]);
+  };
+
+  const updatePortfolioItem = <K extends keyof PortfolioItem>(
+    index: number,
+    key: K,
+    value: PortfolioItem[K]
+  ) => {
+    setPortfolioItems((current) =>
+      current.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [key]: value } : item
+      )
+    );
+  };
+
+  const removePortfolioItem = (index: number) => {
+    setPortfolioItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (displayName && (displayName.length < 3 || displayName.length > 30)) {
@@ -64,6 +102,25 @@ export default function EditProfileForm({ publicKey }: Props) {
     }
     if (bio && bio.length > 300) {
       setErrorMsg("Bio cannot exceed 300 characters.");
+      return;
+    }
+    if (portfolioItems.length > MAX_PORTFOLIO_ITEMS) {
+      setErrorMsg(`You can add up to ${MAX_PORTFOLIO_ITEMS} portfolio items.`);
+      return;
+    }
+
+    const normalizedPortfolioItems = portfolioItems.map((item) => ({
+      title: item.title.trim(),
+      url: item.url.trim(),
+      type: item.type,
+    }));
+
+    const hasIncompletePortfolioItem = normalizedPortfolioItems.some(
+      (item) => !item.title || !item.url || !item.type
+    );
+
+    if (hasIncompletePortfolioItem) {
+      setErrorMsg("Each portfolio item needs a title, type, and URL or transaction ID.");
       return;
     }
 
@@ -78,8 +135,10 @@ export default function EditProfileForm({ publicKey }: Props) {
         bio,
         role,
         skills,
+        portfolioItems: normalizedPortfolioItems,
       });
       setProfile(updated);
+      setPortfolioItems(updated.portfolioItems || []);
       setSuccessMsg("Profile saved successfully!");
       setTimeout(() => setSuccessMsg(""), 3000);
     } catch (err: any) {
@@ -140,27 +199,30 @@ export default function EditProfileForm({ publicKey }: Props) {
         </div>
 
         <div>
-           <label className="block text-sm font-medium text-amber-100 mb-2">Role</label>
-           <div className="flex flex-wrap gap-4">
-             {(["freelancer", "client", "both"] as UserRole[]).map((r) => (
-               <label key={r} className={clsx(
-                 "flex items-center justify-center px-4 py-2.5 rounded-xl border cursor-pointer transition-all",
-                 role === r 
-                   ? "bg-market-500/10 border-market-400 text-market-300" 
-                   : "bg-ink-900/50 border-market-500/20 text-amber-600 hover:border-market-500/50"
-               )}>
-                 <input
-                   type="radio"
-                   name="role"
-                   value={r}
-                   checked={role === r}
-                   onChange={() => setRole(r)}
-                   className="sr-only"
-                 />
-                 <span className="capitalize">{r}</span>
-               </label>
-             ))}
-           </div>
+          <label className="block text-sm font-medium text-amber-100 mb-2">Role</label>
+          <div className="flex flex-wrap gap-4">
+            {(["freelancer", "client", "both"] as UserRole[]).map((r) => (
+              <label
+                key={r}
+                className={clsx(
+                  "flex items-center justify-center px-4 py-2.5 rounded-xl border cursor-pointer transition-all",
+                  role === r
+                    ? "bg-market-500/10 border-market-400 text-market-300"
+                    : "bg-ink-900/50 border-market-500/20 text-amber-600 hover:border-market-500/50"
+                )}
+              >
+                <input
+                  type="radio"
+                  name="role"
+                  value={r}
+                  checked={role === r}
+                  onChange={() => setRole(r)}
+                  className="sr-only"
+                />
+                <span className="capitalize">{r}</span>
+              </label>
+            ))}
+          </div>
         </div>
 
         <div>
@@ -204,9 +266,103 @@ export default function EditProfileForm({ publicKey }: Props) {
           </div>
         </div>
 
-        <div className="pt-4 border-t border-market-500/10 flex justify-end">
-          <button 
-            type="submit" 
+        <div>
+          <div className="flex items-center justify-between gap-4 mb-3">
+            <div>
+              <label className="block text-sm font-medium text-amber-100">Portfolio</label>
+              <p className="text-xs text-amber-800 mt-1">
+                Add up to {MAX_PORTFOLIO_ITEMS} verified work samples.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={addPortfolioItem}
+              disabled={portfolioItems.length >= MAX_PORTFOLIO_ITEMS}
+              className="btn-secondary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Add Item
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {portfolioItems.map((item, index) => {
+              const selectedType = portfolioTypeOptions.find((option) => option.value === item.type) || portfolioTypeOptions[0];
+
+              return (
+                <div
+                  key={`${item.type}-${index}`}
+                  className="rounded-xl border border-market-500/20 bg-ink-900/50 p-4 space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-medium text-amber-100">Sample {index + 1}</p>
+                    <button
+                      type="button"
+                      onClick={() => removePortfolioItem(index)}
+                      className="text-sm text-red-400 hover:text-red-300 transition-colors"
+                    >
+                      Remove
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-medium text-amber-100 mb-1.5">Title</label>
+                      <input
+                        type="text"
+                        value={item.title}
+                        onChange={(e) => updatePortfolioItem(index, "title", e.target.value)}
+                        className="w-full bg-ink-950/60 border border-market-500/20 rounded-xl px-4 py-3 text-amber-100 placeholder:text-amber-800/50 focus:outline-none focus:border-market-400 transition-colors"
+                        placeholder="Escrow payment flow"
+                        maxLength={80}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-amber-100 mb-1.5">Type</label>
+                      <select
+                        value={item.type}
+                        onChange={(e) => updatePortfolioItem(index, "type", e.target.value as PortfolioItemType)}
+                        className="w-full bg-ink-950/60 border border-market-500/20 rounded-xl px-4 py-3 text-amber-100 focus:outline-none focus:border-market-400 transition-colors"
+                      >
+                        {portfolioTypeOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-amber-100 mb-1.5">
+                      {item.type === "stellar_tx" ? "Transaction ID" : "URL"}
+                    </label>
+                    <input
+                      type="text"
+                      value={item.url}
+                      onChange={(e) => updatePortfolioItem(index, "url", e.target.value)}
+                      className="w-full bg-ink-950/60 border border-market-500/20 rounded-xl px-4 py-3 text-amber-100 placeholder:text-amber-800/50 focus:outline-none focus:border-market-400 transition-colors"
+                      placeholder={selectedType.placeholder}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+
+            {portfolioItems.length === 0 && (
+              <div className="rounded-xl border border-dashed border-market-500/20 bg-ink-900/30 px-4 py-6 text-sm text-amber-800">
+                No portfolio items yet. Add GitHub repos, live URLs, or Stellar transaction proofs.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="pt-4 border-t border-market-500/10 flex justify-between items-center gap-3">
+          <p className="text-xs text-amber-800">
+            {portfolioItems.length}/{MAX_PORTFOLIO_ITEMS} portfolio items
+          </p>
+          <button
+            type="submit"
             disabled={saving}
             className="btn-primary"
           >

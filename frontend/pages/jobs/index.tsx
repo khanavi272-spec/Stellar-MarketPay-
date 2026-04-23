@@ -10,6 +10,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
+import { getTimezoneOffset, toZonedTime } from "date-fns-tz";
 
 export default function JobsPage() {
   const router = useRouter();
@@ -48,6 +49,22 @@ export default function JobsPage() {
     setUserTimezone(detectedTz);
     setUseGeolocation(true);
     setGeoLoading(false);
+  };
+
+  // Check if job timezone is within ±3 hours of user timezone
+  const isTimezoneCompatible = (jobTimezone: string | undefined): boolean => {
+    if (!jobTimezone) return true; // Jobs without timezone appear for all users
+    if (!userTimezone) return true; // If no user timezone, show all jobs
+
+    try {
+      const now = new Date();
+      const userOffset = getTimezoneOffset(userTimezone, now);
+      const jobOffset = getTimezoneOffset(jobTimezone, now);
+      const diffHours = Math.abs(userOffset - jobOffset) / (1000 * 60 * 60);
+      return diffHours <= 3;
+    } catch (err) {
+      return true; // If timezone parsing fails, show the job
+    }
   };
 
   useEffect(() => {
@@ -114,7 +131,7 @@ export default function JobsPage() {
 
   const minN = minBudget.trim() ? parseFloat(minBudget) : NaN;
   const maxN = maxBudget.trim() ? parseFloat(maxBudget) : NaN;
-  const filtered =
+  const budgetFiltered =
     !Number.isNaN(minN) || !Number.isNaN(maxN)
       ? searchFiltered.filter((j) => {
           const b = parseFloat(j.budget);
@@ -125,8 +142,11 @@ export default function JobsPage() {
         })
       : searchFiltered;
 
-  // Determine active timezone for UI display
+  // Apply timezone filtering
   const activeTimezone = manualTimezone || (useGeolocation ? userTimezone : "");
+  const filtered = activeTimezone
+    ? budgetFiltered.filter((j) => isTimezoneCompatible(j.timezone))
+    : budgetFiltered;
 
   const setFilter = (key: string, val: string) => {
     router.push(

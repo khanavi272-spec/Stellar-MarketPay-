@@ -52,12 +52,7 @@ export default function PostJobForm({ publicKey }: PostJobFormProps) {
     title: "", description: "", budget: "", category: "", skillInput: "", deadline: "", timezone: "",
   });
   const [skills, setSkills] = useState<string[]>([]);
-  const [templates, setTemplates] = useState<JobTemplate[]>([]);
-  const [selectedTemplateName, setSelectedTemplateName] = useState("");
-  const [templateNameInput, setTemplateNameInput] = useState("");
-  const [templateError, setTemplateError] = useState<string | null>(null);
-  const [pendingOverwriteTemplate, setPendingOverwriteTemplate] = useState<JobTemplate | null>(null);
-  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [screeningQuestions, setScreeningQuestions] = useState<string[]>([""]);
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -101,115 +96,37 @@ export default function PostJobForm({ publicKey }: PostJobFormProps) {
 
   const removeSkill = (s: string) => setSkills(skills.filter((x) => x !== s));
 
-  const handleLoadTemplate = (templateName: string) => {
-    setSelectedTemplateName(templateName);
-    setTemplateNameInput(templateName);
-    setTemplateError(null);
-    setPendingOverwriteTemplate(null);
-    setShowDeleteConfirmation(false);
-
-    const template = templates.find((item) => item.name === templateName);
-    if (!template) return;
-
-    setForm({
-      title: template.title,
-      description: template.description,
-      budget: template.budget,
-      category: template.category,
-      skillInput: "",
-      deadline: template.deadline,
-    });
-    setSkills([...template.skills]);
-    setShowSuggestions(false);
-    setSelectedSuggestionIndex(0);
-    setError(null);
-    toast.success(`Loaded template "${template.name}".`);
-  };
-
-  const buildTemplate = (templateName: string): JobTemplate => ({
-    name: templateName,
-    title: form.title.trim(),
-    description: form.description.trim(),
-    budget: form.budget,
-    category: form.category,
-    skills: [...skills],
-    deadline: form.deadline,
-  });
-
-  const saveTemplate = (templateName: string) => {
-    const nextTemplate = buildTemplate(templateName);
-
-    const existingTemplate = templates.find((template) => template.name === templateName);
-    if (existingTemplate) {
-      setPendingOverwriteTemplate(nextTemplate);
-      setTemplateError(`Template "${templateName}" already exists. Confirm overwrite to replace it.`);
-      return;
+  const addScreeningQuestion = () => {
+    if (screeningQuestions.length < 5) {
+      setScreeningQuestions([...screeningQuestions, ""]);
     }
-
-    persistTemplates([...templates, nextTemplate]);
-    setSelectedTemplateName(templateName);
-    setTemplateNameInput(templateName);
-    setTemplateError(null);
-    setPendingOverwriteTemplate(null);
-    setShowDeleteConfirmation(false);
-    toast.success(`Template "${templateName}" saved.`);
   };
 
-  const handleSaveTemplate = () => {
-    const templateName = templateNameInput.trim();
-    if (!templateName) {
-      setTemplateError("Enter a template name before saving.");
-      setPendingOverwriteTemplate(null);
-      return;
-    }
-
-    saveTemplate(templateName);
+  const removeScreeningQuestion = (index: number) => {
+    setScreeningQuestions(screeningQuestions.filter((_, i) => i !== index));
   };
 
-  const handleConfirmOverwrite = () => {
-    if (!pendingOverwriteTemplate) return;
-
-    const nextTemplates = templates.map((template) =>
-      template.name === pendingOverwriteTemplate.name ? pendingOverwriteTemplate : template
-    );
-
-    persistTemplates(nextTemplates);
-    setSelectedTemplateName(pendingOverwriteTemplate.name);
-    setTemplateNameInput(pendingOverwriteTemplate.name);
-    setTemplateError(null);
-    setPendingOverwriteTemplate(null);
-    setShowDeleteConfirmation(false);
-    toast.success(`Template "${pendingOverwriteTemplate.name}" updated.`);
+  const updateScreeningQuestion = (index: number, value: string) => {
+    const updated = [...screeningQuestions];
+    updated[index] = value;
+    setScreeningQuestions(updated);
   };
 
-  const handleCancelOverwrite = () => {
-    setPendingOverwriteTemplate(null);
-    setTemplateError(null);
-  };
+  function getStepStatus(currentStep: Step, targetStep: Step): "idle" | "active" | "done" {
+    if (currentStep === targetStep) return "active";
+    if (targetStep === "done" && currentStep === "done") return "done";
+    if (targetStep === "locking" && (currentStep === "done" || currentStep === "error")) return "done";
+    if (targetStep === "posting" && (currentStep === "locking" || currentStep === "done" || currentStep === "error")) return "done";
+    return "idle";
+  }
 
-  const handleDeleteTemplate = () => {
-    if (!selectedTemplateName) return;
-
-    setShowDeleteConfirmation(true);
-    setTemplateError(null);
-    setPendingOverwriteTemplate(null);
-  };
-
-  const handleConfirmDelete = () => {
-    if (!selectedTemplateName) return;
-
-    const deletedTemplateName = selectedTemplateName;
-    const nextTemplates = templates.filter((item) => item.name !== deletedTemplateName);
-    persistTemplates(nextTemplates);
-    setSelectedTemplateName("");
-    setTemplateNameInput("");
-    setTemplateError(null);
-    setPendingOverwriteTemplate(null);
-    setShowDeleteConfirmation(false);
-    toast.success(`Template "${deletedTemplateName}" deleted.`);
-  };
-
-  const handleCancelDelete = () => setShowDeleteConfirmation(false);
+  function getStepTextColor(currentStep: Step, targetStep: Step): string {
+    if (currentStep === targetStep) return "text-amber-100";
+    if (targetStep === "done" && currentStep === "done") return "text-green-400";
+    if (targetStep === "locking" && (currentStep === "done" || currentStep === "error")) return "text-green-400";
+    if (targetStep === "posting" && (currentStep === "locking" || currentStep === "done" || currentStep === "error")) return "text-green-400";
+    return "text-amber-800/50";
+  }
 
   const isValid =
     form.title.trim().length >= 10 &&
@@ -237,6 +154,7 @@ export default function PostJobForm({ publicKey }: PostJobFormProps) {
         deadline: form.deadline || undefined,
         timezone: form.timezone || undefined,
         clientAddress: publicKey,
+        screeningQuestions: screeningQuestions.filter(q => q.trim().length > 0),
       });
 
       // Step 2 — Build & sign Soroban create_escrow() transaction
@@ -532,25 +450,62 @@ export default function PostJobForm({ publicKey }: PostJobFormProps) {
           <p className="mt-1 text-xs text-amber-800/50">Helps freelancers in compatible timezones find your job</p>
         </div>
 
+        {/* Screening Questions (optional) */}
+        <div>
+          <label className="label">Screening Questions <span className="normal-case text-amber-900 font-normal">(optional - up to 5)</span></label>
+          <p className="text-xs text-amber-800/50 mb-3">Add questions applicants must answer when applying. This helps filter relevant candidates.</p>
+          <div className="space-y-3">
+            {screeningQuestions.map((question, index) => (
+              <div key={index} className="flex gap-2">
+                <input
+                  type="text"
+                  value={question}
+                  onChange={(e) => updateScreeningQuestion(index, e.target.value)}
+                  placeholder={`Question ${index + 1}`}
+                  className="input-field flex-1"
+                />
+                {screeningQuestions.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeScreeningQuestion(index)}
+                    className="btn-secondary px-3 py-2 text-sm"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            ))}
+            {screeningQuestions.length < 5 && (
+              <button
+                type="button"
+                onClick={addScreeningQuestion}
+                className="btn-secondary text-sm py-2 px-4"
+              >
+                + Add Question
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* Multi-step progress indicator */}
         {step !== "idle" && (
           <div className="p-4 rounded-xl bg-market-900/60 border border-market-500/20 space-y-3">
             <p className="text-xs font-medium text-amber-800/70 uppercase tracking-wider">Transaction progress</p>
             <div className="flex items-center gap-3">
-              <StepDot status={step === "posting" ? "active" : step === "error" ? "idle" : "done"} />
-              <span className={clsx("text-sm", step === "posting" ? "text-amber-100" : step === "error" ? "text-amber-800/50" : "text-green-400")}>
+              <StepDot status={getStepStatus(step, "posting")} />
+              <span className={clsx("text-sm", getStepTextColor(step, "posting"))}>
                 Posting job
               </span>
             </div>
             <div className="flex items-center gap-3">
-              <StepDot status={step === "locking" ? "active" : step === "done" ? "done" : "idle"} />
-              <span className={clsx("text-sm", step === "locking" ? "text-amber-100" : step === "done" ? "text-green-400" : "text-amber-800/50")}>
+              <StepDot status={getStepStatus(step, "locking")} />
+              <span className={clsx("text-sm", getStepTextColor(step, "locking"))}>
                 Locking escrow on-chain
               </span>
             </div>
             <div className="flex items-center gap-3">
-              <StepDot status={step === "done" ? "done" : "idle"} />
-              <span className={clsx("text-sm", step === "done" ? "text-green-400" : "text-amber-800/50")}>
+              <StepDot status={getStepStatus(step, "done")} />
+              <span className={clsx("text-sm", getStepTextColor(step, "done"))}>
                 Complete
               </span>
             </div>

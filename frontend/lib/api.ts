@@ -150,6 +150,7 @@ export async function createJob(payload: {
   category: string; skills: string[]; deadline?: string;
   timezone?: string;
   clientAddress: string;
+  screeningQuestions?: string[];
 }) {
   const { data } = await api.post<{ success: boolean; data: Job }>("/api/jobs", payload);
   return data.data;
@@ -211,7 +212,8 @@ export async function fetchApplications(jobId: string) {
  * @see backend/src/routes/applications.js
  */
 export async function submitApplication(payload: {
-  jobId: string; freelancerAddress: string; proposal: string; bidAmount: string; currency: string;
+  jobId: string; freelancerAddress: string; proposal: string; bidAmount: string;
+  screeningAnswers?: Record<string, string>;
 }) {
   const { data } = await api.post<{ success: boolean; data: Application }>("/api/applications", payload);
   return data.data;

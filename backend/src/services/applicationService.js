@@ -34,13 +34,14 @@ function rowToApp(row) {
     bidAmount:         row.bid_amount,
     currency:          row.currency || 'XLM',
     status:            row.status,
+    screeningAnswers:  row.screening_answers || {},
     createdAt:         row.created_at,
   };
 }
 
 // ─── service functions ───────────────────────────────────────────────────────
 
-async function submitApplication({ jobId, freelancerAddress, proposal, bidAmount, currency = 'XLM' }) {
+async function submitApplication({ jobId, freelancerAddress, proposal, bidAmount, screeningAnswers }) {
   validatePublicKey(freelancerAddress);
 
   // Validate the job (throws 404 if missing)
@@ -59,14 +60,26 @@ async function submitApplication({ jobId, freelancerAddress, proposal, bidAmount
     const e = new Error("Bid must be a positive number"); e.status = 400; throw e;
   }
 
+  // Validate screening answers if job has screening questions
+  if (job.screeningQuestions && job.screeningQuestions.length > 0) {
+    if (!screeningAnswers || typeof screeningAnswers !== "object") {
+      const e = new Error("Screening answers are required for this job"); e.status = 400; throw e;
+    }
+    for (const question of job.screeningQuestions) {
+      if (!screeningAnswers[question] || screeningAnswers[question].trim().length === 0) {
+        const e = new Error("All screening questions must be answered"); e.status = 400; throw e;
+      }
+    }
+  }
+
   // Insert; the UNIQUE(job_id, freelancer_address) constraint handles duplicates.
   let appRow;
   try {
     const { rows } = await query(
-      `INSERT INTO applications (job_id, freelancer_address, proposal, bid_amount, currency, status, created_at)
-       VALUES ($1, $2, $3, $4, $5, 'pending', NOW())
+      `INSERT INTO applications (job_id, freelancer_address, proposal, bid_amount, status, screening_answers, created_at)
+       VALUES ($1, $2, $3, $4, 'pending', $5, NOW())
        RETURNING *`,
-      [jobId, freelancerAddress, proposal.trim(), parseFloat(bidAmount).toFixed(7), currency]
+      [jobId, freelancerAddress, proposal.trim(), parseFloat(bidAmount).toFixed(7), screeningAnswers || {}]
     );
     appRow = rows[0];
   } catch (err) {

@@ -11,23 +11,9 @@ import ApplicationForm from "@/components/ApplicationForm";
 import FreelancerTierBadge from "@/components/FreelancerTierBadge";
 import WalletConnect from "@/components/WalletConnect";
 import RatingForm from "@/components/RatingForm";
-import ShareJobModal from "@/components/ShareJobModal";
-import {
-  acceptApplication,
-  fetchApplications,
-  fetchJob,
-  fetchProfile,
-  releaseEscrow,
-} from "@/lib/api";
-import {
-  availabilityStatusLabel,
-  availabilitySummary,
-  formatDate,
-  formatXLM,
-  shortenAddress,
-  statusClass,
-  statusLabel,
-} from "@/utils/format";
+import ProposalComparison from "@/components/ProposalComparison";
+import { fetchJob, fetchApplications, acceptApplication, releaseEscrow } from "@/lib/api";
+import { formatXLM, timeAgo, formatDate, shortenAddress, statusLabel, statusClass } from "@/utils/format";
 import {
   accountUrl,
   buildReleaseEscrowTransaction,
@@ -64,8 +50,8 @@ export default function JobDetail({ publicKey, onConnect }: JobDetailProps) {
   const [releaseSyncedWithBackend, setReleaseSyncedWithBackend] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
-  const [showShareModal, setShowShareModal] = useState(false);
-  const [prefillData, setPrefillData] = useState<any>(null);
+  const [selectedApplications, setSelectedApplications] = useState<Set<string>>(new Set());
+  const [showComparison, setShowComparison] = useState(false);
 
   const isClient = publicKey && job?.clientAddress === publicKey;
   const isFreelancer = publicKey && job?.freelancerAddress === publicKey;
@@ -132,17 +118,32 @@ export default function JobDetail({ publicKey, onConnect }: JobDetailProps) {
     if (!publicKey) return;
 
     try {
-      await acceptApplication(applicationId, publicKey);
-      const [jobData, applicationData] = await Promise.all([
-        fetchJob(id as string),
-        fetchApplications(id as string),
-      ]);
-      setJob(jobData);
-      setApplications(applicationData);
+      await acceptApplication(appId, publicKey);
+      const [j, apps] = await Promise.all([fetchJob(id as string), fetchApplications(id as string)]);
+      setJob(j); setApplications(apps);
+      setSelectedApplications(new Set());
     } catch {
       setActionError("Failed to accept application.");
     }
   };
+
+  const handleToggleSelection = (appId: string) => {
+    setSelectedApplications((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(appId)) {
+        newSet.delete(appId);
+      } else if (newSet.size < 3) {
+        newSet.add(appId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleClearSelection = () => {
+    setSelectedApplications(new Set());
+  };
+
+  const selectedApps = applications.filter((app) => selectedApplications.has(app.id));
 
   const handleReleaseEscrow = async () => {
     if (!publicKey || !job) return;
@@ -298,53 +299,115 @@ export default function JobDetail({ publicKey, onConnect }: JobDetailProps) {
             </div>
           )}
         </div>
+      )}
 
-        {isClient && job.status === "in_progress" && (
-          <div className="card mb-6 border-emerald-500/20 bg-emerald-500/5">
-            <h3 className="font-display text-base font-semibold text-emerald-300 mb-2">
-              Release Escrow Payment
-            </h3>
-            <p className="text-amber-700 text-sm mb-4">
-              Work complete? Release{" "}
-              <span className="text-market-400 font-mono font-semibold">{formatXLM(job.budget)}</span> from
-              escrow to the freelancer.
-            </p>
-
-            {releaseSuccess && releaseTxHash ? (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium">
-                  <span>✓</span>
-                  {releaseSyncedWithBackend
-                    ? "Escrow released on-chain. Your job is marked complete."
-                    : "Escrow released on-chain."}
-                </div>
-                <p className="text-xs text-amber-700 break-all font-mono">Transaction: {releaseTxHash}</p>
-                <a
-                  href={explorerUrl(releaseTxHash)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex text-sm text-market-400 hover:text-market-300 underline"
-                >
-                  View on Stellar Expert →
-                </a>
-              </div>
-            ) : releaseSuccess ? (
-              <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium">
-                <span>✓</span> Escrow released! Payment sent to freelancer.
-              </div>
-            ) : (
+      {/* Applications (client view) */}
+      {isClient && applications.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-display text-xl font-bold text-amber-100">
+              Applications ({applications.length})
+            </h2>
+            {selectedApplications.size >= 2 && (
               <button
-                onClick={handleReleaseEscrow}
-                disabled={releasingEscrow}
-                className="btn-primary bg-emerald-600 hover:bg-emerald-500 flex items-center gap-2"
+                onClick={() => setShowComparison(true)}
+                className="btn-primary text-sm py-2 px-4"
               >
-                {releasingEscrow ? (
-                  <>
-                    <Spinner /> Releasing...
-                  </>
-                ) : (
-                  "✓ Approve & Release Payment"
+                Compare Selected ({selectedApplications.size})
+              </button>
+            )}
+          </div>
+          <div className="space-y-4">
+            {applications.map((app) => (
+              <div key={app.id} className="card">
+                <div className="flex items-start justify-between gap-4 mb-3">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedApplications.has(app.id)}
+                      onChange={() => handleToggleSelection(app.id)}
+                      disabled={
+                        !selectedApplications.has(app.id) && selectedApplications.size >= 3
+                      }
+                      className="w-4 h-4 rounded border-market-500/30 bg-market-500/10 text-market-400 focus:ring-market-500/50 cursor-pointer"
+                    />
+                    <a href={accountUrl(app.freelancerAddress)} target="_blank" rel="noopener noreferrer"
+                      className="address-tag hover:border-market-500/40 transition-colors">
+                      {shortenAddress(app.freelancerAddress)} ↗
+                    </a>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-market-400 font-semibold text-sm">{formatXLM(app.bidAmount)}</span>
+                    <span className={clsx("text-xs px-2.5 py-1 rounded-full border",
+                      app.status === "accepted" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
+                      app.status === "rejected" ? "bg-red-500/10 text-red-400 border-red-500/20" :
+                      "bg-market-500/10 text-market-400 border-market-500/20"
+                    )}>{app.status}</span>
+                  </div>
+                </div>
+                <p className="text-amber-700/80 text-sm leading-relaxed mb-4">{app.proposal}</p>
+                
+                {/* Screening Answers */}
+                {app.screeningAnswers && Object.keys(app.screeningAnswers).length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-market-500/10">
+                    <h4 className="text-xs font-semibold text-amber-800 uppercase tracking-wider mb-3">Screening Question Answers</h4>
+                    <div className="space-y-3">
+                      {Object.entries(app.screeningAnswers).map(([question, answer], index) => (
+                        <div key={index}>
+                          <p className="text-xs text-amber-300 font-medium mb-1">{question}</p>
+                          <p className="text-sm text-amber-700/80 bg-market-500/5 p-2 rounded border border-market-500/10">{answer}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
+                
+                {app.status === "pending" && job.status === "open" && (
+                  <button onClick={() => handleAcceptApplication(app.id)} className="btn-secondary text-sm py-2 px-4 mt-4">
+                    Accept Proposal
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Proposal Comparison Modal */}
+      {showComparison && (
+        <ProposalComparison
+          applications={selectedApps}
+          job={job}
+          publicKey={publicKey}
+          onClose={() => setShowComparison(false)}
+          onAccept={handleAcceptApplication}
+        />
+      )}
+
+      {/* Apply (freelancer view) */}
+      {!isClient && job.status === "open" && (
+        <div className="mb-6">
+          {!publicKey ? (
+            <div>
+              <p className="text-amber-800 text-sm mb-4 text-center">Connect your wallet to apply for this job</p>
+              <WalletConnect onConnect={onConnect} />
+            </div>
+          ) : hasApplied ? (
+            <div className="card text-center py-8 border-market-500/20">
+              <p className="text-market-400 font-medium mb-1">✅ Application submitted</p>
+              <p className="text-amber-800 text-sm">The client will review your proposal shortly.</p>
+            </div>
+          ) : showApplyForm ? (
+            <ApplicationForm
+              job={job}
+              publicKey={publicKey}
+              prefillData={prefillData}
+              onSuccess={() => { setShowApplyForm(false); setApplications((prev) => [...prev, {} as Application]); }}
+            />
+          ) : (
+            <div className="text-center">
+              <button onClick={() => setShowApplyForm(true)} className="btn-primary text-base px-10 py-3.5">
+                Apply for this Job
               </button>
             )}
 

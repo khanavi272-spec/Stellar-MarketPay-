@@ -10,7 +10,6 @@ import clsx from "clsx";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
-import { getTimezoneOffset, toZonedTime } from "date-fns-tz";
 
 export default function JobsPage() {
   const router = useRouter();
@@ -51,22 +50,6 @@ export default function JobsPage() {
     setGeoLoading(false);
   };
 
-  // Check if job timezone is within ±3 hours of user timezone
-  const isTimezoneCompatible = (jobTimezone: string | undefined): boolean => {
-    if (!jobTimezone) return true; // Jobs without timezone appear for all users
-    if (!userTimezone) return true; // If no user timezone, show all jobs
-
-    try {
-      const now = new Date();
-      const userOffset = getTimezoneOffset(userTimezone, now);
-      const jobOffset = getTimezoneOffset(jobTimezone, now);
-      const diffHours = Math.abs(userOffset - jobOffset) / (1000 * 60 * 60);
-      return diffHours <= 3;
-    } catch (err) {
-      return true; // If timezone parsing fails, show the job
-    }
-  };
-
   useEffect(() => {
     if (!router.isReady) return;
 
@@ -82,12 +65,16 @@ export default function JobsPage() {
         let pagesLoaded = 0;
         let allJobs: Job[] = [];
 
+        // Determine active timezone for backend filtering
+        const activeTimezone = manualTimezone || (useGeolocation ? userTimezone : "");
+
         for (let page = 1; page <= pageFromQuery; page += 1) {
           const result = await fetchJobs({
             category: category || undefined,
             status: status || undefined,
             limit: 20,
             cursor,
+            timezone: activeTimezone || undefined,
           });
 
           const seenIds = new Set(allJobs.map((job) => job.id));
@@ -115,7 +102,7 @@ export default function JobsPage() {
     loadJobs();
 
     return () => { isCancelled = true; };
-  }, [category, status, pageFromQuery, router.isReady]);
+  }, [category, status, pageFromQuery, router.isReady, manualTimezone, useGeolocation, userTimezone]);
 
   const searchFiltered = search.trim()
     ? jobs.filter((j) =>
@@ -127,7 +114,7 @@ export default function JobsPage() {
 
   const minN = minBudget.trim() ? parseFloat(minBudget) : NaN;
   const maxN = maxBudget.trim() ? parseFloat(maxBudget) : NaN;
-  const budgetFiltered =
+  const filtered =
     !Number.isNaN(minN) || !Number.isNaN(maxN)
       ? searchFiltered.filter((j) => {
           const b = parseFloat(j.budget);
@@ -138,11 +125,8 @@ export default function JobsPage() {
         })
       : searchFiltered;
 
-  // Apply timezone filtering
+  // Determine active timezone for UI display
   const activeTimezone = manualTimezone || (useGeolocation ? userTimezone : "");
-  const filtered = activeTimezone
-    ? budgetFiltered.filter((j) => isTimezoneCompatible(j.timezone))
-    : budgetFiltered;
 
   const setFilter = (key: string, val: string) => {
     router.push(
@@ -159,11 +143,15 @@ export default function JobsPage() {
     setError(null);
 
     try {
+      // Determine active timezone for backend filtering
+      const activeTimezone = manualTimezone || (useGeolocation ? userTimezone : "");
+
       const result = await fetchJobs({
         category: category || undefined,
         status: status || undefined,
         limit: 20,
         cursor: nextCursor,
+        timezone: activeTimezone || undefined,
       });
 
       setJobs((prev) => {

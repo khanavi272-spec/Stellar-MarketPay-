@@ -88,7 +88,7 @@ api.interceptors.request.use((config: any) => {
 
 // ─── Jobs ─────────────────────────────────────────────────────────────────────
 
-export async function fetchJobs(params?: { category?: string; status?: string; limit?: number; search?: string; cursor?: string }) {
+export async function fetchJobs(params?: { category?: string; status?: string; limit?: number; search?: string; cursor?: string; timezone?: string }) {
   const { data } = await api.get<{ success: boolean; data: Job[]; nextCursor: string | null }>("/api/jobs", { params });
   return {
     jobs: data.data,

@@ -48,6 +48,7 @@ function rowToJob(row) {
     escrowContractId:  row.escrow_contract_id,
     applicantCount:    row.applicant_count,
     deadline:          row.deadline,
+    timezone:          row.timezone,
     createdAt:         row.created_at,
     updatedAt:         row.updated_at,
   };
@@ -59,7 +60,7 @@ function rowToJob(row) {
  * Create a new job listing.
  * Note: the client's profile row must already exist (FK constraint).
  */
-async function createJob({ title, description, budget, category, skills, deadline, clientAddress }) {
+async function createJob({ title, description, budget, category, skills, deadline, timezone, clientAddress }) {
   validatePublicKey(clientAddress);
 
   if (!title || title.length < 10) {
@@ -80,8 +81,8 @@ async function createJob({ title, description, budget, category, skills, deadlin
   const { rows } = await query(
     `
     INSERT INTO jobs
-      (title, description, budget, category, skills, status, client_address, deadline, created_at, updated_at)
-    VALUES ($1, $2, $3, $4, $5, 'open', $6, $7, NOW(), NOW())
+      (title, description, budget, category, skills, status, client_address, deadline, timezone, created_at, updated_at)
+    VALUES ($1, $2, $3, $4, $5, 'open', $6, $7, $8, NOW(), NOW())
     RETURNING *
     `,
     [
@@ -92,6 +93,7 @@ async function createJob({ title, description, budget, category, skills, deadlin
       safeSkills,
       clientAddress,
       deadline || null,
+      timezone || null,
     ]
   );
 

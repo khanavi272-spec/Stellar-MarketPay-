@@ -148,6 +148,7 @@ export async function fetchJob(id: string) {
 export async function createJob(payload: {
   title: string; description: string; budget: string;
   category: string; skills: string[]; deadline?: string;
+  timezone?: string;
   clientAddress: string;
 }) {
   const { data } = await api.post<{ success: boolean; data: Job }>("/api/jobs", payload);

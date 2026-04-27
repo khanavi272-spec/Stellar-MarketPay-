@@ -142,6 +142,16 @@ function rowToProfile(row) {
   };
 }
 
+function calculateFreelancerTier(completedJobs = 0, rating = null) {
+  const jobs = Number(completedJobs) || 0;
+  const safeRating = rating === null || rating === undefined ? null : Number(rating);
+
+  if (jobs >= 30 && safeRating !== null && safeRating >= 4.8) return "Top Talent";
+  if (jobs >= 15 && safeRating !== null && safeRating >= 4.5) return "Expert";
+  if (jobs >= 5) return "Rising Star";
+  return "Newcomer";
+}
+
 async function getProfile(publicKey) {
   validatePublicKey(publicKey);
 
@@ -176,6 +186,7 @@ async function getProfile(publicKey) {
   const profile = rowToProfile(rows[0]);
   profile.rating = rows[0].avg_rating !== null ? parseFloat(rows[0].avg_rating) : null;
   profile.ratingCount = rows[0].rating_count;
+  profile.tier = calculateFreelancerTier(profile.completedJobs, profile.rating);
   
   // Calculate reputation score (simple formula: higher weight on ratings, lower on time)
   // Max score 100.
@@ -260,6 +271,7 @@ module.exports = {
   getProfile,
   upsertProfile,
   updateAvailability,
+  calculateFreelancerTier,
   VALID_PORTFOLIO_TYPES,
   VALID_AVAILABILITY_STATUSES,
   MAX_PORTFOLIO_ITEMS,

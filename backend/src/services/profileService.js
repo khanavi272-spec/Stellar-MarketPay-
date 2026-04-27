@@ -137,6 +137,8 @@ function rowToProfile(row) {
     completedJobs: row.completed_jobs,
     totalEarnedXLM: row.total_earned_xlm,
     rating: row.rating !== null ? parseFloat(row.rating) : null,
+    didHash: row.did_hash,
+    isKycVerified: row.is_kyc_verified,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -267,10 +269,36 @@ async function updateAvailability(publicKey, availability) {
   return rowToProfile(rows[0]);
 }
 
+async function verifyIdentity(publicKey, didHash) {
+  validatePublicKey(publicKey);
+  if (!didHash) throw createValidationError("didHash is required");
+
+  const { rows } = await pool.query(
+    `
+    UPDATE profiles
+    SET did_hash = $2,
+        is_kyc_verified = TRUE,
+        updated_at = NOW()
+    WHERE public_key = $1
+    RETURNING *
+    `,
+    [publicKey, didHash]
+  );
+
+  if (!rows.length) {
+    const e = new Error("Profile not found");
+    e.status = 404;
+    throw e;
+  }
+
+  return rowToProfile(rows[0]);
+}
+
 module.exports = {
   getProfile,
   upsertProfile,
   updateAvailability,
+  verifyIdentity,
   calculateFreelancerTier,
   VALID_PORTFOLIO_TYPES,
   VALID_AVAILABILITY_STATUSES,

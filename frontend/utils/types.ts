@@ -57,6 +57,8 @@ export interface UserProfile {
   tier?: FreelancerTier;
   /** Number of ratings received (when returned by profile API). */
   ratingCount?: number;
+  didHash?: string;
+  isKycVerified?: boolean;
   createdAt: string;
   updatedAt?: string;
 }

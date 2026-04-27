@@ -24,6 +24,10 @@ ALTER TABLE profiles
 ALTER TABLE profiles
   ADD COLUMN IF NOT EXISTS availability JSONB;
 
+ALTER TABLE profiles
+  ADD COLUMN IF NOT EXISTS did_hash TEXT,
+  ADD COLUMN IF NOT EXISTS is_kyc_verified BOOLEAN NOT NULL DEFAULT FALSE;
+
 -- ─────────────────────────────────────────
 -- jobs
 -- ─────────────────────────────────────────

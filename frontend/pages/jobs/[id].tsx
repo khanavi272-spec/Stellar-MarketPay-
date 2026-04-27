@@ -12,7 +12,7 @@ import WalletConnect from "@/components/WalletConnect";
 import RatingForm from "@/components/RatingForm";
 import ShareJobModal from "@/components/ShareJobModal";
 import { fetchJob, fetchApplications, acceptApplication, releaseEscrow, scoreProposals } from "@/lib/api";
-import { formatXLM, timeAgo, formatDate, shortenAddress, statusLabel, statusClass } from "@/utils/format";
+import { formatXLM, timeAgo, formatDate, shortenAddress, statusLabel, statusClass, copyToClipboard } from "@/utils/format";
 import {
   accountUrl,
   buildReleaseEscrowTransaction,
@@ -64,6 +64,14 @@ export default function JobDetail({ publicKey, onConnect }: JobDetailProps) {
   const [releaseCurrency, setReleaseCurrency] = useState<"XLM" | "USDC">("XLM");
   const [estimatedOutput, setEstimatedOutput] = useState<string | null>(null);
   const [fetchingPrice, setFetchingPrice] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  const handleCopyJobLink = async () => {
+    const ok = await copyToClipboard(window.location.href);
+    if (!ok) return;
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  };
 
   const isClient = publicKey && job?.clientAddress === publicKey;
   const isFreelancer = publicKey && job?.freelancerAddress === publicKey;
@@ -352,6 +360,29 @@ export default function JobDetail({ publicKey, onConnect }: JobDetailProps) {
                     Featured
                   </span>
                 )}
+                {/* Copy link button (Issue #149) */}
+                <button
+                  type="button"
+                  onClick={handleCopyJobLink}
+                  aria-label="Copy job link"
+                  className="btn-ghost inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
+                >
+                  {linkCopied ? (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 015.656 0l1.415 1.415a4 4 0 010 5.656l-3 3a4 4 0 01-5.656 0l-1.415-1.415m-2.828-2.828a4 4 0 010-5.656l3-3a4 4 0 015.656 0l1.415 1.415" />
+                      </svg>
+                      Copy link
+                    </>
+                  )}
+                </button>
               </div>
               <h1 className="font-display text-2xl sm:text-3xl font-bold text-amber-100 leading-snug">
                 {job.title}

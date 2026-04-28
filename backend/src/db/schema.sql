@@ -208,3 +208,22 @@ CREATE TABLE IF NOT EXISTS contract_events (
 CREATE INDEX IF NOT EXISTS contract_events_job_id_idx ON contract_events(job_id);
 CREATE INDEX IF NOT EXISTS contract_events_created_at_idx ON contract_events(created_at DESC);
 
+-- ─────────────────────────────────────────
+-- admin_profiles (Issue #195 - 2FA support)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS admin_profiles (
+  id                  TEXT PRIMARY KEY,              -- Stellar public key
+  email               TEXT,
+  totp_secret         TEXT,                          -- Encrypted TOTP secret
+  totp_enabled        BOOLEAN NOT NULL DEFAULT FALSE,
+  backup_codes        TEXT,                          -- JSON string of backup codes
+  totp_attempts       INTEGER NOT NULL DEFAULT 0,
+  totp_locked_until   TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO admin_profiles (id, email)
+SELECT 'GXXXPLACEHOLDER', 'admin@stellarmarketpay.com'
+WHERE NOT EXISTS (SELECT 1 FROM admin_profiles WHERE id = 'GXXXPLACEHOLDER');
+

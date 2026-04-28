@@ -15,6 +15,8 @@ import {
   deleteProposalTemplate,
   fetchPriceAlertPreference,
   upsertPriceAlertPreference,
+  fetchJobAnalytics,
+  extendJobExpiry,
 } from "@/lib/api";
 import { getXLMBalance, getUSDCBalance, streamAccountTransactions } from "@/lib/stellar";
 import { formatXLM, shortenAddress, timeAgo, statusLabel, statusClass, copyToClipboard, exportJobsToCSV, exportApplicationsToCSV } from "@/utils/format";
@@ -23,13 +25,14 @@ import EditProfileForm from "@/components/EditProfileForm";
 import SendPaymentForm from "@/components/SendPaymentForm";
 import { useToast } from "@/components/Toast";
 import clsx from "clsx";
+import JobAnalytics from "@/components/JobAnalytics";
 
 interface DashboardProps {
   publicKey: string | null;
   onConnect: (pk: string) => void;
 }
 
-type Tab = "posted" | "applied" | "send" | "edit_profile" | "templates" | "price_alerts";
+type Tab = "posted" | "applied" | "analytics" | "send" | "edit_profile" | "templates" | "price_alerts";
 const REPOST_JOB_PREFILL_STORAGE_KEY = "marketpay_repost_job_prefill";
 
 export default function Dashboard({ publicKey, onConnect }: DashboardProps) {
@@ -87,6 +90,20 @@ export default function Dashboard({ publicKey, onConnect }: DashboardProps) {
         freelancer: job.freelancerAddress || "",
       },
     });
+  };
+
+  const handleExtendJob = async (jobId: string) => {
+    setExtendingJob(jobId);
+    try {
+      await extendJobExpiry(jobId);
+      // Refresh jobs to update expiry info
+      const jobs = await fetchMyJobs(publicKey!);
+      setMyJobs(jobs);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setExtendingJob(null);
+    }
   };
 
   useEffect(() => {
@@ -260,7 +277,7 @@ export default function Dashboard({ publicKey, onConnect }: DashboardProps) {
       )}
 
       <div className="flex border-b border-market-500/10 mb-6 overflow-x-auto">
-        {(["posted", "applied", "send", "edit_profile", "templates", "price_alerts"] as Tab[]).map((t) => (
+        {(["posted", "applied", "analytics", "send", "edit_profile", "templates", "price_alerts"] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={clsx(
               "px-6 py-3 text-sm font-medium transition-all border-b-2 -mb-px whitespace-nowrap",
@@ -364,14 +381,46 @@ export default function Dashboard({ publicKey, onConnect }: DashboardProps) {
                   </div>
                 </div>
               </Link>
-            ))}
+             ))}
           </div>
         )
-      ) : tab === "send" ? (
-        <div className="max-w-lg">
-          <SendPaymentForm fromPublicKey={publicKey} />
+      ) : tab === "analytics" ? (
+        <div className="space-y-4">
+          {myJobs.length === 0 ? (
+            <div className="card text-center py-16">
+              <p className="font-display text-xl text-amber-100 mb-2">No jobs posted yet</p>
+              <p className="text-amber-800 text-sm mb-6">Post a job to see analytics</p>
+              <Link href="/post-job" className="btn-primary text-sm">Post a Job →</Link>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="flex gap-4 overflow-x-auto pb-2">
+                {myJobs.map((job) => (
+                  <button
+                    key={job.id}
+                    onClick={() => setSelectedJob(selectedJob?.id === job.id ? null : job)}
+                    className={clsx(
+                      "btn-secondary px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all",
+                      selectedJob?.id === job.id
+                        ? "bg-market-500/20 text-market-300 border-market-400"
+                        : "bg-ink-900/50 text-amber-700 hover:text-amber-300 border-transparent"
+                    )}
+                  >
+                    {job.title}
+                  </button>
+                ))}
+              </div>
+              {selectedJob ? (
+                <JobAnalytics job={selectedJob} onExtend={() => handleExtendJob(selectedJob.id)} />
+              ) : (
+                <div className="card text-center py-12">
+                  <p className="text-amber-800">Select a job to view its analytics</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
-      ) : tab === "templates" ? (
+      ) : tab === "send" ? (
         <div className="space-y-4">
           <div className="card space-y-3">
             <p className="text-sm text-amber-100 font-medium">

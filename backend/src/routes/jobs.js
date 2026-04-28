@@ -15,6 +15,8 @@ const { createJob, getJob, listJobs, listJobsByClient, updateJobEscrowId, delete
 const { verifyJWT } = require("../middleware/auth");
 const { inviteFreelancerToJob } = require("../services/jobInvitationService");
 const { logContractInteraction } = require("../services/contractAuditService");
+const jobDraftService = require("../services/jobDraftService");
+const recommendationService = require("../services/recommendationService");
 
 // ─── Feed Helpers ─────────────────────────────────────────────────────────────
 
@@ -296,6 +298,48 @@ router.get("/feed.atom", generalJobRateLimiter, async (req, res, next) => {
     
     res.set("Content-Type", "application/atom+xml; charset=utf-8");
     res.send(atom);
+  } catch (e) { next(e); }
+});
+
+// GET /api/jobs/drafts — list job drafts for authenticated user
+router.get("/drafts", verifyJWT, async (req, res, next) => {
+  try {
+    const drafts = await jobDraftService.getDrafts(req.user.publicKey, 5);
+    res.json({ success: true, data: drafts });
+  } catch (e) { next(e); }
+});
+
+// POST /api/jobs/drafts — save or update a job draft
+router.post("/drafts", verifyJWT, async (req, res, next) => {
+  try {
+    const draft = await jobDraftService.saveDraft(req.user.publicKey, req.body);
+    res.status(201).json({ success: true, data: draft });
+  } catch (e) { next(e); }
+});
+
+// GET /api/jobs/drafts/:id — get a specific draft
+router.get("/drafts/:id", verifyJWT, async (req, res, next) => {
+  try {
+    const draft = await jobDraftService.getDraft(req.params.id, req.user.publicKey);
+    if (!draft) return res.status(404).json({ success: false, error: "Draft not found" });
+    res.json({ success: true, data: draft });
+  } catch (e) { next(e); }
+});
+
+// DELETE /api/jobs/drafts/:id — delete a draft
+router.delete("/drafts/:id", verifyJWT, async (req, res, next) => {
+  try {
+    await jobDraftService.deleteDraft(req.params.id, req.user.publicKey);
+    res.json({ success: true });
+  } catch (e) { next(e); }
+});
+
+// GET /api/jobs/recommended — get personalized job recommendations
+router.get("/recommended", verifyJWT, async (req, res, next) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 10, 50);
+    const recommendations = await recommendationService.getRecommendations(req.user.publicKey, limit);
+    res.json({ success: true, data: recommendations });
   } catch (e) { next(e); }
 });
 

@@ -9,6 +9,7 @@ import "@/styles/globals.css";
 import { ToastProvider } from "@/components/Toast";
 import { PriceProvider } from "@/contexts/PriceContext";
 import ShortcutsModal from "@/components/ShortcutsModal";
+import OfflineBanner from "@/components/OfflineBanner";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import "../lib/i18n";
 
@@ -52,12 +53,20 @@ function App({ Component, pageProps }: AppProps) {
   };
 
   useEffect(() => {
-    getConnectedPublicKey().then(async (pk) => { 
+    getConnectedPublicKey().then(async (pk) => {
       if (pk) {
         const authenticated = await handleAuthAndConnect(pk);
         if (authenticated) setPublicKey(pk);
-      } 
+      }
     });
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch((error) => {
+        console.log("Service worker registration failed:", error);
+      });
+    }
   }, []);
 
   const handleConnect = async () => {
@@ -82,9 +91,12 @@ function App({ Component, pageProps }: AppProps) {
           <title>Stellar MarketPay — Decentralised Freelance Marketplace</title>
           <meta name="description" content="Post jobs, hire freelancers, and pay with XLM — secured by Soroban smart contracts." />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <link rel="manifest" href="/manifest.json" />
+          <link rel="apple-touch-icon" href="/icon-192x192.png" />
           <link rel="alternate" type="application/rss+xml" title="Stellar MarketPay — Job Listings (RSS)" href="/api/jobs/feed.rss" />
           <link rel="alternate" type="application/atom+xml" title="Stellar MarketPay — Job Listings (Atom)" href="/api/jobs/feed.atom" />
         </Head>
+        <OfflineBanner />
         <div className="min-h-screen bg-ink-900 bg-lines">
           <Navbar publicKey={publicKey} onConnect={handleConnect} onDisconnect={() => setPublicKey(null)} />
           <main>

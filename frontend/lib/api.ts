@@ -523,3 +523,31 @@ export async function fetchJobSuggestions(query: string): Promise<{ type: 'title
   const { data } = await api.get<{ success: boolean; data: { type: string; value: string }[] }>("/api/jobs/suggestions", { params: { q: query } });
   return data.data.map((item) => ({ type: item.type as 'title' | 'skill' | 'category', value: item.value }));
 }
+
+// ─── Job Drafts (Issue #219) ────────────────────────────────────────────
+
+export async function saveDraft(draftData: any) {
+  const { data } = await api.post<{ success: boolean; data: any }>("/api/jobs/drafts", draftData);
+  return data.data;
+}
+
+export async function fetchDrafts() {
+  const { data } = await api.get<{ success: boolean; data: any[] }>("/api/jobs/drafts");
+  return data.data;
+}
+
+export async function fetchDraft(draftId: string) {
+  const { data } = await api.get<{ success: boolean; data: any }>(`/api/jobs/drafts/${draftId}`);
+  return data.data;
+}
+
+export async function deleteDraft(draftId: string) {
+  await api.delete(`/api/jobs/drafts/${draftId}`);
+}
+
+// ─── Job Recommendations (Issue #221) ───────────────────────────────────
+
+export async function fetchRecommendedJobs(limit = 10) {
+  const { data } = await api.get<{ success: boolean; data: Job[] }>("/api/jobs/recommended", { params: { limit } });
+  return data.data;
+}

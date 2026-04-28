@@ -261,5 +261,44 @@ CREATE INDEX IF NOT EXISTS contract_events_job_id_idx ON contract_events(job_id)
 CREATE INDEX IF NOT EXISTS contract_events_created_at_idx ON contract_events(created_at DESC);
 
 -- ─────────────────────────────────────────
+-- job_drafts (Issue #219)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS job_drafts (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_address      TEXT        NOT NULL REFERENCES profiles(public_key) ON DELETE CASCADE,
+  title               TEXT        NOT NULL,
+  description         TEXT        NOT NULL,
+  budget              NUMERIC(20,7) NOT NULL,
+  category            TEXT        NOT NULL,
+  skills              TEXT[]      NOT NULL DEFAULT '{}',
+  currency            TEXT        NOT NULL DEFAULT 'XLM',
+  timezone            TEXT,
+  visibility          TEXT        NOT NULL DEFAULT 'public',
+  screening_questions TEXT[]      NOT NULL DEFAULT '{}',
+  deadline            TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
+CREATE INDEX IF NOT EXISTS job_drafts_client_idx ON job_drafts(client_address);
+CREATE INDEX IF NOT EXISTS job_drafts_updated_at_idx ON job_drafts(updated_at DESC);
+
+-- ─────────────────────────────────────────
+-- platform_stats (Issue #232)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS platform_stats (
+  id                  INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  total_jobs_posted   INTEGER     NOT NULL DEFAULT 0,
+  total_escrow_xlm    NUMERIC(20,7) NOT NULL DEFAULT 0,
+  active_users_30d    INTEGER     NOT NULL DEFAULT 0,
+  completion_rate     NUMERIC(5,2) NOT NULL DEFAULT 0,
+  avg_job_budget      NUMERIC(20,7) NOT NULL DEFAULT 0,
+  last_updated        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO platform_stats (id)
+VALUES (1)
+ON CONFLICT (id) DO NOTHING;
+
+-- ─────────────────────────────────────────
 

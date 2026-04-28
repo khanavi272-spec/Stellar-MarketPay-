@@ -21,10 +21,10 @@ interface DashboardProps {
 }
 
 type Tab = "posted" | "applied" | "send" | "edit_profile";
+const REPOST_JOB_PREFILL_STORAGE_KEY = "marketpay_repost_job_prefill";
 
 export default function Dashboard({ publicKey, onConnect }: DashboardProps) {
   const router = useRouter();
-
   const [tab, setTab] = useState<Tab>("posted");
   const [myJobs, setMyJobs] = useState<Job[]>([]);
   const [myApplications, setMyApplications] = useState<Application[]>([]);
@@ -236,32 +236,26 @@ export default function Dashboard({ publicKey, onConnect }: DashboardProps) {
 
             {myJobs.map((job) => (
               <div key={job.id} className="card-hover flex items-center justify-between gap-4">
-                <Link href={`/jobs/${job.id}`} className="flex-1 min-w-0">
-                  <div>
+                  <Link href={`/jobs/${job.id}`} className="flex-1 min-w-0 block">
                     <div className="flex items-center gap-2 mb-1">
                       <span className={statusClass(job.status)}>{statusLabel(job.status)}</span>
                       <span className="text-xs text-amber-800">{job.category}</span>
                     </div>
                     <p className="font-display font-semibold text-amber-100 truncate">{job.title}</p>
-                    <p className="text-xs text-amber-800 mt-1">
-                      {job.applicantCount} applicant{job.applicantCount !== 1 ? "s" : ""} · {timeAgo(job.createdAt)}
-                    </p>
+                    <p className="text-xs text-amber-800 mt-1">{job.applicantCount} applicant{job.applicantCount !== 1 ? "s" : ""} · {timeAgo(job.createdAt)}</p>
+                  </Link>
+                  <div className="text-right flex-shrink-0 space-y-2">
+                    <p className="font-mono font-semibold text-market-400">{formatXLM(job.budget)}</p>
+                    {isRepostable(job.status) && (
+                      <button
+                        type="button"
+                        className="btn-secondary text-xs px-3 py-1.5"
+                        onClick={() => handleRepost(job)}
+                      >
+                        Repost Job
+                      </button>
+                    )}
                   </div>
-                </Link>
-
-                <div className="text-right flex-shrink-0 flex flex-col items-end gap-2">
-                  <p className="font-mono font-semibold text-market-400">{formatXLM(job.budget)}</p>
-
-                  {job.status === "completed" && (
-                    <button
-                      type="button"
-                      onClick={() => handleHireAgain(job)}
-                      className="btn-secondary text-xs px-3 py-1.5"
-                    >
-                      Hire Again
-                    </button>
-                  )}
-                </div>
               </div>
             ))}
           </div>

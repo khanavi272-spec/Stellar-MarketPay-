@@ -26,6 +26,7 @@ type FormState = {
   deadline: string;
   currency: Currency;
   timezone: string;
+  visibility: "public" | "private" | "invite_only";
 };
 
 type JobTemplate = {
@@ -50,6 +51,7 @@ const emptyForm: FormState = {
   deadline: "",
   currency: "XLM" as Currency,
   timezone: "",
+  visibility: "public",
 };
 
 export default function PostJobForm({ publicKey }: PostJobFormProps) {
@@ -57,7 +59,7 @@ export default function PostJobForm({ publicKey }: PostJobFormProps) {
   const toast = useToast();
   const { xlmPriceUsd } = usePriceContext();
   const [form, setForm] = useState<FormState>({
-    title: "", description: "", budget: "", category: "", skillInput: "", deadline: "", currency: "XLM" as Currency, timezone: "",
+    title: "", description: "", budget: "", category: "", skillInput: "", deadline: "", currency: "XLM" as Currency, timezone: "", visibility: "public",
   });
   const [skills, setSkills] = useState<string[]>([]);
   const [screeningQuestions, setScreeningQuestions] = useState<string[]>([""]);
@@ -209,6 +211,7 @@ export default function PostJobForm({ publicKey }: PostJobFormProps) {
         skills,
         deadline: form.deadline || undefined,
         timezone: form.timezone || undefined,
+        visibility: form.visibility,
         clientAddress: publicKey,
         screeningQuestions: screeningQuestions.filter(q => q.trim().length > 0),
       });
@@ -501,6 +504,19 @@ export default function PostJobForm({ publicKey }: PostJobFormProps) {
             </select>
             <p className="mt-1 text-xs text-amber-800/50">Payment currency for this job</p>
           </div>
+        </div>
+
+        <div>
+          <label className="label">Visibility</label>
+          <select
+            value={form.visibility}
+            onChange={(e) => set("visibility", e.target.value as "public" | "private" | "invite_only")}
+            className="input-field appearance-none cursor-pointer"
+          >
+            <option value="public">Public</option>
+            <option value="private">Private (only you)</option>
+            <option value="invite_only">Invite Only</option>
+          </select>
         </div>
 
         {/* Skills */}

@@ -13,6 +13,8 @@ const generalJobRateLimiter = createRateLimiter(30, 1); // 100 requests per minu
 const jobService = require("../services/jobService");
 const { createJob, getJob, listJobs, listJobsByClient, updateJobEscrowId, deleteJob, boostJob, incrementShareCount } = jobService.default || jobService;
 const { verifyJWT } = require("../middleware/auth");
+const { inviteFreelancerToJob } = require("../services/jobInvitationService");
+const { logContractInteraction } = require("../services/contractAuditService");
 
 // ─── Feed Helpers ─────────────────────────────────────────────────────────────
 
@@ -43,9 +45,9 @@ function truncateDescription(description, maxLength = 200) {
 // GET /api/jobs — list jobs (with optional ?category=&status=&limit=&search=)
 router.get("/", generalJobRateLimiter, async (req, res, next) => {
   try {
-    const { category, status, limit, search, cursor, timezone } = req.query;
+    const { category, status, limit, search, cursor, timezone, viewerAddress } = req.query;
     const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 20, 100));
-    const result = await listJobs({ category, status, limit: safeLimit, search, cursor, timezone });
+    const result = await listJobs({ category, status, limit: safeLimit, search, cursor, timezone, viewerAddress });
     res.json({ success: true, data: result.jobs, nextCursor: result.nextCursor });
   } catch (e) { next(e); }
 });
@@ -58,7 +60,19 @@ router.get("/client/:publicKey", generalJobRateLimiter, async (req, res, next) =
 
 // GET /api/jobs/:id — get single job
 router.get("/:id", generalJobRateLimiter, async (req, res, next) => {
-  try { res.json({ success: true, data: await getJob(req.params.id) }); }
+  try {
+    const job = await getJob(req.params.id);
+    const viewerAddress = req.query.viewerAddress;
+    const canView =
+      job.visibility === "public" ||
+      (typeof viewerAddress === "string" &&
+        (viewerAddress === job.clientAddress || viewerAddress === job.freelancerAddress));
+
+    if (job.visibility === "private" && !canView) {
+      return res.status(403).json({ success: false, error: "Job is private" });
+    }
+    res.json({ success: true, data: job });
+  }
   catch (e) { next(e); }
 });
 
@@ -70,11 +84,38 @@ router.post("/", jobCreationRateLimiter, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// POST /api/jobs/:id/invite — invite freelancer to invite-only job
+router.post("/:id/invite", verifyJWT, generalJobRateLimiter, async (req, res, next) => {
+  try {
+    const invitation = await inviteFreelancerToJob({
+      jobId: req.params.id,
+      clientAddress: req.user.publicKey,
+      freelancerAddress: req.body.freelancerAddress,
+    });
+
+    req.app.locals.broadcastRealtime?.("job:invited", {
+      jobId: req.params.id,
+      recipientAddress: invitation.freelancer_address,
+      invitedAt: invitation.created_at,
+    });
+
+    res.status(201).json({ success: true, data: invitation });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // PATCH /api/jobs/:id/escrow — store escrow contract ID after on-chain lock
 router.patch("/:id/escrow", verifyJWT, generalJobRateLimiter, async (req, res, next) => {
   try {
     const { escrowContractId } = req.body;
     const job = await updateJobEscrowId(req.params.id, escrowContractId);
+    await logContractInteraction({
+      functionName: "create_escrow",
+      callerAddress: req.user.publicKey,
+      jobId: req.params.id,
+      txHash: escrowContractId,
+    });
     res.json({ success: true, data: job });
   } catch (e) { next(e); }
 });

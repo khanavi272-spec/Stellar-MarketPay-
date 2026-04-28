@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import { getTimezoneOffset, toZonedTime } from "date-fns-tz";
+import { getConnectedPublicKey } from "@/lib/wallet";
 
 export default function JobsPage() {
   const router = useRouter();
@@ -26,6 +27,7 @@ export default function JobsPage() {
   const [useGeolocation, setUseGeolocation] = useState<boolean>(false);
   const [geoLoading, setGeoLoading] = useState<boolean>(false);
   const [geoError, setGeoError] = useState<string | null>(null);
+  const [viewerAddress, setViewerAddress] = useState<string>("");
 
   const category = (router.query.category as string) || "";
   const status = (router.query.status as string) || "open";
@@ -37,6 +39,9 @@ export default function JobsPage() {
   useEffect(() => {
     const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     setUserTimezone(detectedTz);
+    getConnectedPublicKey().then((publicKey) => {
+      if (publicKey) setViewerAddress(publicKey);
+    }).catch(() => {});
   }, []);
 
   // Handle geolocation-based timezone detection
@@ -92,6 +97,7 @@ export default function JobsPage() {
             limit: 20,
             cursor,
             timezone: activeTimezone || undefined,
+            viewerAddress: viewerAddress || undefined,
           });
 
           const seenIds = new Set(allJobs.map((job) => job.id));
@@ -119,7 +125,7 @@ export default function JobsPage() {
     loadJobs();
 
     return () => { isCancelled = true; };
-  }, [category, status, pageFromQuery, router.isReady, manualTimezone, useGeolocation, userTimezone]);
+  }, [category, status, pageFromQuery, router.isReady, manualTimezone, useGeolocation, userTimezone, viewerAddress]);
 
   const searchFiltered = search.trim()
     ? jobs.filter((j) =>
@@ -172,6 +178,7 @@ export default function JobsPage() {
         limit: 20,
         cursor: nextCursor,
         timezone: activeTimezone || undefined,
+        viewerAddress: viewerAddress || undefined,
       });
 
       setJobs((prev) => {

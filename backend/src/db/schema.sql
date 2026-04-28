@@ -57,11 +57,26 @@ CREATE INDEX IF NOT EXISTS jobs_created_at_idx      ON jobs(created_at DESC);
 
 ALTER TABLE jobs
   ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'XLM',
+  ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'public',
   ADD COLUMN IF NOT EXISTS share_count INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS boosted BOOLEAN NOT NULL DEFAULT FALSE,
   ADD COLUMN IF NOT EXISTS boosted_until TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS timezone TEXT,
   ADD COLUMN IF NOT EXISTS screening_questions TEXT[] NOT NULL DEFAULT '{}';
+
+-- enforce valid visibility values for all rows
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'jobs_visibility_check'
+  ) THEN
+    ALTER TABLE jobs
+      ADD CONSTRAINT jobs_visibility_check
+      CHECK (visibility IN ('public', 'private', 'invite_only'));
+  END IF;
+END $$;
 
 -- ─────────────────────────────────────────
 -- applications
@@ -207,4 +222,63 @@ CREATE TABLE IF NOT EXISTS contract_events (
 
 CREATE INDEX IF NOT EXISTS contract_events_job_id_idx ON contract_events(job_id);
 CREATE INDEX IF NOT EXISTS contract_events_created_at_idx ON contract_events(created_at DESC);
+
+-- ─────────────────────────────────────────
+-- contract_audit_log
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS contract_audit_log (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  function_name   TEXT        NOT NULL,
+  caller_address  TEXT        NOT NULL,
+  job_id          UUID        REFERENCES jobs(id),
+  tx_hash         TEXT        NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS contract_audit_log_job_id_idx ON contract_audit_log(job_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS contract_audit_log_caller_idx ON contract_audit_log(caller_address, created_at DESC);
+
+-- ─────────────────────────────────────────
+-- job_invitations
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS job_invitations (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id              UUID        NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  client_address      TEXT        NOT NULL REFERENCES profiles(public_key),
+  freelancer_address  TEXT        NOT NULL REFERENCES profiles(public_key),
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (job_id, freelancer_address)
+);
+
+CREATE INDEX IF NOT EXISTS job_invitations_freelancer_idx ON job_invitations(freelancer_address, created_at DESC);
+
+-- ─────────────────────────────────────────
+-- proposal_templates
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS proposal_templates (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  freelancer_address  TEXT        NOT NULL REFERENCES profiles(public_key) ON DELETE CASCADE,
+  name                TEXT        NOT NULL,
+  content             TEXT        NOT NULL,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (freelancer_address, name)
+);
+
+CREATE INDEX IF NOT EXISTS proposal_templates_freelancer_idx ON proposal_templates(freelancer_address, updated_at DESC);
+
+-- ─────────────────────────────────────────
+-- price_alert_preferences
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS price_alert_preferences (
+  freelancer_address          TEXT PRIMARY KEY REFERENCES profiles(public_key) ON DELETE CASCADE,
+  min_xlm_price_usd           NUMERIC(20,7),
+  max_xlm_price_usd           NUMERIC(20,7),
+  email_notifications_enabled BOOLEAN     NOT NULL DEFAULT FALSE,
+  email                       TEXT,
+  last_min_alert_at           TIMESTAMPTZ,
+  last_max_alert_at           TIMESTAMPTZ,
+  created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 

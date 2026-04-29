@@ -17,6 +17,16 @@ router.get("/:publicKey", generalProfileRateLimiter ,async (req, res, next) => {
   catch (e) { next(e); }
 });
 
+router.get("/:publicKey/stats", generalProfileRateLimiter, async (req, res, next) => {
+  try { res.json({ success: true, data: await getProfileStats(req.params.publicKey) }); }
+  catch (e) { next(e); }
+});
+
+router.get("/:publicKey/response-time", generalProfileRateLimiter, async (req, res, next) => {
+  try { res.json({ success: true, data: await getResponseTime(req.params.publicKey) }); }
+  catch (e) { next(e); }
+});
+
 router.post("/", profileUpdateRateLimiter, async (req, res, next) => {
   try { res.json({ success: true, data: await upsertProfile(req.body) }); }
   catch (e) { next(e); }

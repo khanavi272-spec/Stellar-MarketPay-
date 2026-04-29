@@ -382,48 +382,59 @@ async function updateAvailability(publicKey, availability) {
   return rowToProfile(rows[0]);
 }
 
-/**
- * Record an identity-verification result on a profile. Sets `did_hash` and
- * marks the profile `is_kyc_verified = TRUE`. The profile row must already
- * exist — call {@link upsertProfile} first if needed.
- *
- * @param {string} publicKey  Stellar G-address.
- * @param {string} didHash    DID hash returned by the verification provider.
- * @returns {Promise<UserProfile>}
- * @throws {Error} 400 — invalid public key, or `didHash` missing.
- * @throws {Error} 404 — profile not found.
- */
-async function verifyIdentity(publicKey, didHash) {
+async function getProfileStats(publicKey) {
   validatePublicKey(publicKey);
-  if (!didHash) throw createValidationError("didHash is required");
 
   const { rows } = await pool.query(
-    `
-    UPDATE profiles
-    SET did_hash = $2,
-        is_kyc_verified = TRUE,
-        updated_at = NOW()
-    WHERE public_key = $1
-    RETURNING *
-    `,
-    [publicKey, didHash]
+    `SELECT 
+       COUNT(*)::int AS total_applications,
+       COUNT(CASE WHEN status = 'accepted' THEN 1 END)::int AS accepted_applications
+     FROM applications
+     WHERE freelancer_address = $1`,
+    [publicKey]
   );
 
-  if (!rows.length) {
-    const e = new Error("Profile not found");
-    e.status = 404;
-    throw e;
-  }
+  const stats = rows[0];
+  const total = stats.total_applications || 0;
+  const accepted = stats.accepted_applications || 0;
+  const successRate = total > 0 ? Math.round((accepted / total) * 100) : 0;
 
-  return rowToProfile(rows[0]);
+  return {
+    totalApplications: total,
+    acceptedApplications: accepted,
+    successRate
+  };
+}
+
+async function getResponseTime(publicKey) {
+  validatePublicKey(publicKey);
+
+  const { rows } = await pool.query(
+    `SELECT 
+       AVG(EXTRACT(EPOCH FROM (e.released_at - a.accepted_at)) / 86400)::numeric AS avg_days
+     FROM applications a
+     JOIN escrows e ON a.job_id = e.job_id
+     WHERE a.freelancer_address = $1 
+       AND a.status = 'accepted' 
+       AND a.accepted_at IS NOT NULL 
+       AND e.status = 'released' 
+       AND e.released_at IS NOT NULL`,
+    [publicKey]
+  );
+
+  const avgDays = rows[0].avg_days ? parseFloat(rows[0].avg_days) : null;
+
+  return {
+    averageDays: avgDays !== null ? parseFloat(avgDays.toFixed(1)) : null
+  };
 }
 
 module.exports = {
   getProfile,
   upsertProfile,
   updateAvailability,
-  verifyIdentity,
-  calculateFreelancerTier,
+  getProfileStats,
+  getResponseTime,
   VALID_PORTFOLIO_TYPES,
   VALID_AVAILABILITY_STATUSES,
   MAX_PORTFOLIO_ITEMS,

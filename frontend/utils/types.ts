@@ -6,10 +6,9 @@
 export type JobStatus = "open" | "in_progress" | "completed" | "cancelled" | "expired";
 export type UserRole  = "client" | "freelancer" | "both";
 export type Currency  = "XLM" | "USDC";
-export type JobVisibility = "public" | "private" | "invite_only";
 export type FreelancerTier = "Newcomer" | "Rising Star" | "Expert" | "Top Talent";
 export type AvailabilityStatus = "available" | "busy" | "unavailable";
-export type FreelancerTier = "Newcomer" | "Rising Star" | "Expert" | "Top Talent";
+export type PortfolioItemType = "github" | "live" | "stellar_tx";
 
 export interface PortfolioItem {
   title: string;

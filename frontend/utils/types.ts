@@ -22,6 +22,24 @@ export interface Availability {
   availableUntil?: string;
 }
 
+export type FreelancerTier = "Newcomer" | "Rising Star" | "Expert" | "Top Talent";
+
+export type AvailabilityStatus = "available" | "busy" | "unavailable";
+
+export interface Availability {
+  status: AvailabilityStatus;
+  availableFrom?: string;   // ISO date string
+  availableUntil?: string;  // ISO date string
+}
+
+export type PortfolioItemType = "github" | "live" | "stellar_tx";
+
+export interface PortfolioItem {
+  title: string;
+  url: string;
+  type: PortfolioItemType;
+}
+
 export interface Job {
   id: string;
   title: string;
